@@ -28,6 +28,7 @@ Rules below are invariants. Violating any of these creates bugs or maintenance r
 - Treat the repository as a monolith. Coupling is acceptable when it keeps the implementation simpler.
 - Keep concerns separated by layer. Let the layer that owns an input or behavior assemble it, and let downstream layers consume that structured result directly.
 - Assign one source of truth for each piece of data. Compute or normalize it in one place, then pass it through instead of recomputing it in multiple layers.
+- When working on Codex-related behavior, treat `externals/codex` as the primary source of truth before external docs, generated artifacts, bundled files, or assumptions.
 - Do not add abstraction, wrappers, helper layers, or encapsulation unless they clearly remove real duplication or complexity.
 - Forbid no-op wrappers and function-call forwarding. Do not introduce helper functions that only pass arguments through to another function without adding necessary behavior.
 - Do not leave partial refactors behind. If a parameter, branch, helper, or state path becomes unused during a change, remove the dead upstream/downstream wiring in the same diff instead of leaving placeholder code like `void foo`.

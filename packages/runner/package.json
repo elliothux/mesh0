@@ -1,0 +1,10 @@
+{
+  "name": "@mesh0/runner",
+  "private": true,
+  "scripts": {
+    "build": "docker buildx build --platform linux/amd64 --load -t mesh0/runner:local .",
+    "smoke-test": "../../test/runner-smoke-test.sh",
+    "typecheck": "true"
+  },
+  "type": "module"
+}

@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ "$#" -gt 0 ]; then
+  exec "$@"
+fi
+
+echo "mesh0-runner image is ready"
+echo "codex: $(codex --version)"
+echo "node: $(node --version)"
+echo "npm: $(npm --version)"
+echo "python: $(python --version)"
+echo "uv: $(uv --version)"
+echo "bun: $(bun --version)"
+echo "git: $(git --version)"
