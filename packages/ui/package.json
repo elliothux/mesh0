@@ -1,0 +1,13 @@
+{
+  "name": "@lynx/ui",
+  "type": "module",
+  "exports": {
+    "./lib/*": "./src/lib/*.ts",
+    "./style/*": "./src/style/*.css",
+    "./*": "./src/components/*.tsx"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "fix:imports": "bun run ./scripts/fix-shadcn-imports.ts"
+  }
+}
