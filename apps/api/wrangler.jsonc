@@ -1,0 +1,33 @@
+{
+  "name": "mesh0-api",
+  "main": "src/index.ts",
+  "workers_dev": true,
+  "preview_urls": false,
+  "compatibility_date": "2026-02-24",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "mesh0",
+      "database_id": "8175347b-1a6f-4cb2-abff-2929a1b08ac5",
+      "migrations_dir": "migrations",
+    },
+  ],
+  "observability": {
+    "enabled": false,
+    "head_sampling_rate": 1,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "persist": true,
+      "invocation_logs": true,
+    },
+    "traces": {
+      "enabled": false,
+      "persist": true,
+      "head_sampling_rate": 1,
+    },
+  },
+  "placement": {
+    "mode": "smart",
+  },
+}

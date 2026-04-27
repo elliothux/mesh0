@@ -1,0 +1,28 @@
+# dependencies
+node_modules
+
+# build artifacts
+dist
+.next
+out
+coverage
+build
+
+# config directories
+.idea
+.vscode
+
+# misc
+*.log
+
+.tanstack
+
+bun.lock
+
+# generated files
+*.gen.ts
+
+/assets/
+libs/**
+refs/**
+apps/desktop/resources/**

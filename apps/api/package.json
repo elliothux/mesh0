@@ -1,0 +1,16 @@
+{
+  "name": "@mesh0/api",
+  "exports": {
+    ".": "./src/router.ts"
+  },
+  "description": "Remote server for Mesh0",
+  "private": true,
+  "scripts": {
+    "db:migrate:local": "wrangler d1 migrations apply mesh0 --local",
+    "db:migrate:remote": "wrangler d1 migrations apply mesh0 --remote",
+    "deploy": "wrangler deploy src/index.ts",
+    "dev": "wrangler dev src/index.ts --port 5592",
+    "typecheck": "tsc --noEmit"
+  },
+  "type": "module"
+}
