@@ -1,10 +1,13 @@
 {
   "name": "@mesh0/runner",
   "private": true,
-  "scripts": {
-    "build": "docker buildx build --platform linux/amd64 --load -t mesh0/runner:local .",
-    "smoke-test": "../../test/runner-smoke-test.sh",
-    "typecheck": "true"
+  "type": "module",
+  "bin": {
+    "mesh0-runner": "./src/mesh0-runner.ts"
   },
-  "type": "module"
+  "scripts": {
+    "build": "rm -rf dist && bun build src/mesh0-runner.ts --outdir dist --target=bun && docker buildx build --platform linux/amd64 --load -t mesh0/runner:local .",
+    "smoke-test": "../../test/runner-smoke-test.sh",
+    "typecheck": "tsc --noEmit"
+  }
 }

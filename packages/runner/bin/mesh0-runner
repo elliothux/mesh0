@@ -1,15 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [ "$#" -gt 0 ]; then
-  exec "$@"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LOCAL_RUNNER="${SCRIPT_DIR}/../src/mesh0-runner.ts"
+IMAGE_RUNNER="/usr/local/lib/mesh0-runner/dist/mesh0-runner.js"
+
+if [ -f "${LOCAL_RUNNER}" ]; then
+  exec bun "${LOCAL_RUNNER}" "$@"
 fi
 
-echo "mesh0-runner image is ready"
-echo "codex: $(codex --version)"
-echo "node: $(node --version)"
-echo "npm: $(npm --version)"
-echo "python: $(python --version)"
-echo "uv: $(uv --version)"
-echo "bun: $(bun --version)"
-echo "git: $(git --version)"
+exec bun "${IMAGE_RUNNER}" "$@"

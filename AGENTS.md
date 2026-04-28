@@ -29,6 +29,9 @@ Rules below are invariants. Violating any of these creates bugs or maintenance r
 - Keep concerns separated by layer. Let the layer that owns an input or behavior assemble it, and let downstream layers consume that structured result directly.
 - Assign one source of truth for each piece of data. Compute or normalize it in one place, then pass it through instead of recomputing it in multiple layers.
 - When working on Codex-related behavior, treat `externals/codex` as the primary source of truth before external docs, generated artifacts, bundled files, or assumptions.
+- Do not import from `externals/*` in app or package source code. For Codex SDK types, depend on the npm package and import types directly from `@openai/codex-sdk` at use sites.
+- Use Zod schemas for structured parsing and validation. Put shared schemas in `packages/*` and derive TypeScript types from those schemas.
+- Validate at trust boundaries as early as possible, such as env parsing, API input schemas, and persisted-data reads. Avoid repeated runtime dynamic validation after data is already typed and validated.
 - Do not add abstraction, wrappers, helper layers, or encapsulation unless they clearly remove real duplication or complexity.
 - Forbid no-op wrappers and function-call forwarding. Do not introduce helper functions that only pass arguments through to another function without adding necessary behavior.
 - Do not leave partial refactors behind. If a parameter, branch, helper, or state path becomes unused during a change, remove the dead upstream/downstream wiring in the same diff instead of leaving placeholder code like `void foo`.
@@ -66,7 +69,8 @@ Rules below are invariants. Violating any of these creates bugs or maintenance r
 - Declare all external dependencies and internal workspace package dependencies in root `package.json`, including dependencies used by code under `apps/*` and `packages/*`.
 - Keep folder ownership explicit: app-local code stays in `apps/*`; shared code stays in `packages/*`.
 - Frontend filenames use lowercase with hyphens unless framework conventions require otherwise.
-- No re-exports by default; import from the source file that defines the symbol.
+- No re-exports. Do not use `export ... from ...` or barrel files. Do not create pass-through type aliases or value exports that only mirror another module. Consumers must import symbols from the source file or package subpath that defines them. Package export maps may point directly to owning source files.
+- Avoid `index.ts` files whose only purpose is aggregation or exporting. Keep `index.ts` only when a framework or package entry file owns runtime behavior or concrete definitions.
 
 ### Dependencies
 
@@ -126,7 +130,7 @@ Rules below are invariants. Violating any of these creates bugs or maintenance r
 
 ## Documentation & Communication
 
-- Code comments/docs: English. Conversational responses: Chinese.
+- Conversational responses: Chinese.
 - End every response with `喵~`.
 
 ## Talk normal

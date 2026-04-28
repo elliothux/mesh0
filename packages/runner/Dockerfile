@@ -78,6 +78,7 @@ RUN mkdir -p /workspace "${CODEX_HOME}" \
 
 COPY --from=cloudflare-sandbox /container-server/sandbox /sandbox
 COPY bin/mesh0-runner /usr/local/bin/mesh0-runner
+COPY dist /usr/local/lib/mesh0-runner/dist
 
 RUN chmod +x /sandbox /usr/local/bin/mesh0-runner \
   && git --version \

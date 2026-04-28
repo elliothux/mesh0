@@ -6,6 +6,7 @@ ENV_FILE="${ROOT_DIR}/.env"
 IMAGE="${RUNNER_IMAGE:-mesh0/runner:local}"
 SMOKE_MODEL="${RUNNER_SMOKE_MODEL:-}"
 SMOKE_MODEL_PROVIDER="${RUNNER_SMOKE_MODEL_PROVIDER:-}"
+SMOKE_WIRE_API="${RUNNER_SMOKE_WIRE_API:-}"
 
 load_env_value() {
   local key="$1"
@@ -37,6 +38,7 @@ OPENAI_API_KEY="$(load_env_value OPENAI_API_KEY)"
 OPENAI_BASE_URL="$(load_env_value OPENAI_BASE_URL)"
 OPENAI_MODEL="$(load_env_value OPENAI_MODEL)"
 OPENAI_MODEL_PROVIDER="$(load_env_value OPENAI_MODEL_PROVIDER)"
+OPENAI_WIRE_API="$(load_env_value OPENAI_WIRE_API)"
 
 if [ -z "${SMOKE_MODEL}" ]; then
   SMOKE_MODEL="${OPENAI_MODEL}"
@@ -44,6 +46,18 @@ fi
 
 if [ -z "${SMOKE_MODEL_PROVIDER}" ]; then
   SMOKE_MODEL_PROVIDER="${OPENAI_MODEL_PROVIDER}"
+fi
+
+if [ -z "${SMOKE_MODEL_PROVIDER}" ]; then
+  SMOKE_MODEL_PROVIDER="mesh0-openai"
+fi
+
+if [ -z "${SMOKE_WIRE_API}" ]; then
+  SMOKE_WIRE_API="${OPENAI_WIRE_API}"
+fi
+
+if [ -z "${SMOKE_WIRE_API}" ]; then
+  SMOKE_WIRE_API="chat"
 fi
 
 if [ -z "${OPENAI_API_KEY}" ]; then
@@ -56,18 +70,13 @@ if [ -z "${OPENAI_BASE_URL}" ]; then
   exit 1
 fi
 
-if [ -z "${SMOKE_MODEL}" ]; then
-  echo "OPENAI_MODEL is required in ${ENV_FILE}" >&2
-  exit 1
-fi
-
-if [ -z "${SMOKE_MODEL_PROVIDER}" ]; then
-  echo "OPENAI_MODEL_PROVIDER is required in ${ENV_FILE}" >&2
-  exit 1
-fi
-
 if [[ ! "${SMOKE_MODEL_PROVIDER}" =~ ^[A-Za-z0-9_-]+$ ]]; then
   echo "OPENAI_MODEL_PROVIDER must contain only letters, digits, underscores, or hyphens" >&2
+  exit 1
+fi
+
+if [[ "${SMOKE_WIRE_API}" != "chat" && "${SMOKE_WIRE_API}" != "responses" ]]; then
+  echo "OPENAI_WIRE_API must be chat or responses" >&2
   exit 1
 fi
 
@@ -78,23 +87,14 @@ docker run --rm \
   -e OPENAI_BASE_URL="${OPENAI_BASE_URL}" \
   -e RUNNER_SMOKE_MODEL="${SMOKE_MODEL}" \
   -e RUNNER_SMOKE_MODEL_PROVIDER="${SMOKE_MODEL_PROVIDER}" \
+  -e RUNNER_SMOKE_WIRE_API="${SMOKE_WIRE_API}" \
   "${IMAGE}" \
   -lc '
     set -euo pipefail
 
     export CODEX_HOME=/mesh0-codex
 
-    mkdir -p /workspace/smoke "${CODEX_HOME}"
-    cat > "${CODEX_HOME}/config.toml" <<EOF
-model = "${RUNNER_SMOKE_MODEL}"
-model_provider = "${RUNNER_SMOKE_MODEL_PROVIDER}"
-
-[model_providers.${RUNNER_SMOKE_MODEL_PROVIDER}]
-name = "${RUNNER_SMOKE_MODEL_PROVIDER}"
-env_key = "CODEX_API_KEY"
-base_url = "${OPENAI_BASE_URL}"
-wire_api = "chat"
-EOF
+    mkdir -p /workspace/smoke /mesh0-runtime
 
     cd /workspace/smoke
 
@@ -105,15 +105,42 @@ EOF
     git add README.md
     git commit -qm "init"
 
-    args=(exec --json --sandbox read-only --skip-git-repo-check --config "approval_policy=\"never\"")
+    python - <<'"'"'PY'"'"'
+import json
+import os
 
-    if [ -n "${RUNNER_SMOKE_MODEL}" ]; then
-      args+=(--model "${RUNNER_SMOKE_MODEL}")
-    fi
+model = os.environ.get("RUNNER_SMOKE_MODEL")
+model_provider = os.environ["RUNNER_SMOKE_MODEL_PROVIDER"]
+run = {
+    "runId": "run_smoke",
+    "prompt": "Respond with exactly: mesh0-runner-smoke-ok",
+    "systemPrompt": {
+        "append": "Keep this smoke-test response to the requested exact text."
+    },
+    "modelProvider": model_provider,
+    "modelProviders": {
+        model_provider: {
+            "name": model_provider,
+            "env_key": "CODEX_API_KEY",
+            "base_url": os.environ["OPENAI_BASE_URL"],
+            "wire_api": os.environ["RUNNER_SMOKE_WIRE_API"],
+        }
+    },
+    "sandbox": "read-only",
+}
 
-    args+=("Respond with exactly: mesh0-runner-smoke-ok")
+if model:
+    run["model"] = model
 
-    codex "${args[@]}" 2>&1 \
+with open("/mesh0-runtime/run.json", "w", encoding="utf-8") as file:
+    json.dump(run, file)
+PY
+
+    mesh0-runner run \
+      --runtime-dir /mesh0-runtime \
+      --workspace /workspace/smoke \
+      --output-dir /mesh0-runtime/output \
+      2>&1 \
       | python -c "import os, re, sys
 api_key = os.environ.get(\"CODEX_API_KEY\", \"\")
 base_url = os.environ.get(\"OPENAI_BASE_URL\", \"\")
@@ -127,6 +154,10 @@ for line in sys.stdin:
     for value in redacted:
         line = line.replace(value, \"[redacted]\")
     sys.stdout.write(line)" \
-      | tee /tmp/mesh0-runner-smoke.jsonl
-    grep -q "mesh0-runner-smoke-ok" /tmp/mesh0-runner-smoke.jsonl
+      | tee /tmp/mesh0-runner-smoke.log
+
+    grep -q "mesh0-runner-smoke-ok" /mesh0-runtime/output/codex/last-message.txt
+    test -s /mesh0-runtime/output/codex/exec.jsonl
+    test -s /mesh0-runtime/output/mesh0/output-manifest.json
+    jq -e ".status == \"completed\"" /mesh0-runtime/output/mesh0/output-manifest.json >/dev/null
   '
