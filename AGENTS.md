@@ -38,6 +38,7 @@ Rules below are invariants. Violating any of these creates bugs or maintenance r
 - Do not preserve historical compatibility by default. For any change, prefer the most reasonable and simplest design now.
 - Do not add defensive fallback code that hides the real issue; fix the root cause or fail fast.
 - Required config must be validated in schema/env parsing first; prefer schema validation over runtime presence checks.
+- Generate random IDs with `nanoid` from `nanoid`; keep domain prefixes at call sites, such as `run_${nanoid()}`.
 
 ### Boundaries
 
@@ -47,6 +48,7 @@ Rules below are invariants. Violating any of these creates bugs or maintenance r
 
 ### Data & Persistence
 
+- Worker/API runtime state must be stored in D1, Durable Objects, R2, KV, or another explicit storage owner; do not use module-level memory as persistent state.
 - If persistent storage is added, keep schema as single source of truth in one owned module/package.
 - Forbid runtime/manual schema patching in app startup logic.
 - All persisted data must be normalized and preprocessed before writing to storage.

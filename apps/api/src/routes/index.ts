@@ -1,9 +1,9 @@
 import type { RouterClient } from "@orpc/server";
-import { runsRouter } from "./runs";
+import { runRouter } from "./run";
 import { statusRouter } from "./status";
 
 export const router = {
-  runs: runsRouter,
+  runs: runRouter,
   status: statusRouter,
 };
 

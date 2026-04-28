@@ -8,6 +8,13 @@
       "when": 1777271117833,
       "tag": "0000_gray_karnak",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1777352844775,
+      "tag": "0001_greedy_jean_grey",
+      "breakpoints": true
     }
   ]
 }

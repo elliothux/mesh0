@@ -1,4 +1,5 @@
 import { createDb } from "@mesh0/db";
+import { Services } from "@mesh0/services";
 import { corsHeaders, rpcHandler, withCors } from "./orpc";
 
 import type { Context } from "./context";
@@ -12,7 +13,9 @@ export default {
     }
 
     const result = await rpcHandler.handle(request, {
-      context: { db: createDb(worker.DB) } satisfies Context,
+      context: {
+        services: new Services({ db: createDb(worker.DB) }),
+      } satisfies Context,
       prefix: "/rpc",
     });
 

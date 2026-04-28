@@ -1,15 +1,11 @@
 #!/usr/bin/env bun
 
 import type { RpcClient } from "@mesh0/api";
-import { randomUUID } from "node:crypto";
+import { resolveSystemPrompt } from "@mesh0/services/system-prompt";
+import { nanoid } from "nanoid";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import {
-  buildPrompt,
-  parseRunConfig,
-  renderConfigToml,
-  resolveSystemPrompt,
-} from "./config";
+import { buildPrompt, parseRunConfig, renderConfigToml } from "./config";
 import {
   appendLine,
   collectIfFile,
@@ -61,8 +57,7 @@ async function run(options: RunnerOptions) {
   const log = (message: string) => appendLine(paths.runnerLogPath, message);
 
   const config = parseRunConfig(await readJsonFile(runJsonPath));
-  const runId =
-    options.runId ?? config.runId ?? `run_${randomUUID().replaceAll("-", "")}`;
+  const runId = options.runId ?? config.runId ?? `run_${nanoid()}`;
   const baseInstructions =
     config.baseInstructions ?? resolveSystemPrompt(config.systemPrompt);
 

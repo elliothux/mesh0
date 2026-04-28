@@ -1,6 +1,7 @@
-import type { Db } from "@mesh0/db";
 import { os } from "@orpc/server";
 
-export type Context = { db: Db };
+import type { Services } from "@mesh0/services";
+
+export type Context = { services: Services };
 
 export const procedure = os.$context<Context>();
