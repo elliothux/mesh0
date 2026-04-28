@@ -1,7 +1,14 @@
-import { RPCHandler } from "@orpc/server/fetch";
+import { MAX_ARTIFACT_UPLOAD_BYTES } from "@mesh0/sdk/schema";
+import { BodyLimitPlugin, RPCHandler } from "@orpc/server/fetch";
 import { router } from "./routes";
 
-export const rpcHandler = new RPCHandler(router);
+export const rpcHandler = new RPCHandler(router, {
+  plugins: [
+    new BodyLimitPlugin({
+      maxBodySize: MAX_ARTIFACT_UPLOAD_BYTES + 1024 * 1024,
+    }),
+  ],
+});
 
 export const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization",

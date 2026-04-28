@@ -18,7 +18,9 @@
     "format": "bunx sort-package-json && prettier --write --log-level warn .",
     "lint": "(oxlint --fix . && knip) || echo '[warn] lint failed'",
     "prepare": "simple-git-hooks",
-    "test:runner": "bun run test/sdk-api-runner-smoke-test.ts",
+    "test:runner": "bun run test:runner:local && bun run test:runner:worker",
+    "test:runner:local": "bun run test/local-docker-fs-smoke-test.ts",
+    "test:runner:worker": "bun run test/worker-api-dev-smoke-test.ts",
     "typecheck": "bun run --filter './packages/*' typecheck && bun run --filter './apps/*' typecheck",
     "ui:add": "bun run ./scripts/ui-add.ts"
   },
@@ -31,7 +33,9 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.4.1",
+    "@cloudflare/containers": "^0.3.3",
     "@fontsource-variable/inter": "^5.2.8",
+    "@mesh0/adapters": "workspace:*",
     "@mesh0/api": "workspace:*",
     "@mesh0/db": "workspace:*",
     "@mesh0/sdk": "workspace:*",

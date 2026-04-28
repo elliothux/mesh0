@@ -1,12 +1,15 @@
+import { buildArtifactRef } from "@mesh0/adapters/utils";
 import {
   agentRunInputSchema,
   agentRunRecordSchema,
   appendRunEventsInputSchema,
   appendRunEventsResultSchema,
+  artifactRefSchema,
   completeRunInputSchema,
   runIdInputSchema,
   runnerRunConfigSchema,
   threadEventSchema,
+  uploadRunArtifactInputSchema,
 } from "@mesh0/sdk/schema";
 import { RunNotFoundError } from "@mesh0/services/run";
 import { ORPCError } from "@orpc/server";
@@ -53,6 +56,21 @@ export const runRouter = {
     .output(runnerRunConfigSchema)
     .handler(({ context, input }) => {
       return mapRunError(() => context.services.run.getInput(input));
+    }),
+
+  uploadArtifact: procedure
+    .input(uploadRunArtifactInputSchema)
+    .output(artifactRefSchema)
+    .handler(async ({ context, input }) => {
+      await mapRunError(() => context.services.run.get({ runId: input.runId }));
+      const object = await context.storage.put({
+        body: input.file,
+        contentType: input.file.type || undefined,
+        path: input.path,
+        runId: input.runId,
+      });
+
+      return buildArtifactRef(object);
     }),
 };
 

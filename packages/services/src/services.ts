@@ -1,3 +1,4 @@
+import type { RunnerSandbox } from "@mesh0/adapters";
 import { RunService } from "./run";
 import { StatusService } from "./status";
 
@@ -7,8 +8,8 @@ export class Services {
   readonly run: RunService;
   readonly status: StatusService;
 
-  constructor({ db }: { db: Db }) {
-    this.run = new RunService(db);
+  constructor({ db, sandbox }: { db: Db; sandbox?: RunnerSandbox }) {
+    this.run = new RunService(db, sandbox);
     this.status = new StatusService(db);
   }
 }

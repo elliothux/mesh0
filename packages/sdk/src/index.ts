@@ -2,6 +2,7 @@ import type { RpcClient } from "@mesh0/api";
 import type { ThreadEvent } from "@openai/codex-sdk";
 import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
+import { buildRunStorageUri } from "./artifacts";
 import {
   agentRunRecordSchema,
   threadEventSchema,
@@ -10,10 +11,12 @@ import {
 import type {
   AgentRunInput,
   AgentRunRecord,
+  AgentRunStatus,
   AgentSystemPrompt,
+  DownloadRunArtifactInput,
   McpServers,
+  OpenAiEnv,
   SkillRef,
-  WireApi,
   WorkspaceRef,
 } from "./types";
 
@@ -23,7 +26,15 @@ export interface Mesh0ClientOptions {
   fetch?: typeof fetch;
 }
 
+export interface AgentRunWaitOptions {
+  intervalMs?: number;
+  timeoutMs?: number;
+}
+
 export class Mesh0Client {
+  readonly #apiKey: string | undefined;
+  readonly #apiUrl: string;
+  readonly #fetch: typeof fetch;
   readonly #rpc: RpcClient;
 
   constructor(options: Mesh0ClientOptions = {}) {
@@ -31,16 +42,13 @@ export class Mesh0Client {
       /\/$/,
       "",
     );
+    this.#apiKey = options.apiKey;
+    this.#apiUrl = apiUrl;
+    this.#fetch = options.fetch ?? fetch;
+
     const link = new RPCLink({
-      fetch: (request, init) => (options.fetch ?? fetch)(request, init),
-      headers: () => {
-        const headers = new Headers();
-        if (options.apiKey !== undefined) {
-          // TODO: Replace this with user/auth scoped credentials.
-          headers.set("Authorization", `Bearer ${options.apiKey}`);
-        }
-        return headers;
-      },
+      fetch: (request, init) => this.#fetch(request, init),
+      headers: () => this.#headers(),
       url: `${apiUrl}/rpc`,
     });
     this.#rpc = createORPCClient(link);
@@ -71,6 +79,29 @@ export class Mesh0Client {
 
     return new AgentRunHandle(this, record);
   }
+
+  async downloadArtifact(input: DownloadRunArtifactInput) {
+    const response = await this.#fetch(
+      new URL(buildRunStorageUri(input), this.#apiUrl),
+      { headers: this.#headers() },
+    );
+    if (!response.ok) {
+      throw new Error(
+        `Artifact download failed with status ${response.status}: ${await response.text()}`,
+      );
+    }
+
+    return response;
+  }
+
+  #headers() {
+    const headers = new Headers();
+    if (this.#apiKey !== undefined) {
+      // TODO: Replace this with user/auth scoped credentials.
+      headers.set("Authorization", `Bearer ${this.#apiKey}`);
+    }
+    return headers;
+  }
 }
 
 export class AgentBuilder {
@@ -79,11 +110,8 @@ export class AgentBuilder {
   #mcpServers: McpServers | undefined;
   #skills: SkillRef[] | undefined;
   #systemPrompt: AgentSystemPrompt | undefined;
+  #env: OpenAiEnv | undefined;
   #prompt: string | undefined;
-  #baseUrl: string | undefined;
-  #model: string | undefined;
-  #modelProvider: string | undefined;
-  #wireApi: WireApi | undefined;
 
   constructor(client: Mesh0Client) {
     this.#client = client;
@@ -109,24 +137,8 @@ export class AgentBuilder {
     return this;
   }
 
-  baseUrl(baseUrl: string) {
-    this.#baseUrl = baseUrl;
-    return this;
-  }
-
-  model(model: string, modelProvider?: string) {
-    this.#model = model;
-    this.#modelProvider = modelProvider;
-    return this;
-  }
-
-  modelProvider(modelProvider: string) {
-    this.#modelProvider = modelProvider;
-    return this;
-  }
-
-  wireApi(wireApi: WireApi) {
-    this.#wireApi = wireApi;
+  env(env: OpenAiEnv) {
+    this.#env = env;
     return this;
   }
 
@@ -140,15 +152,16 @@ export class AgentBuilder {
       throw new Error("prompt is required");
     }
 
+    if (this.#env === undefined) {
+      throw new Error("env is required");
+    }
+
     return this.#client.createRun({
-      baseUrl: this.#baseUrl,
+      env: this.#env,
       mcpServers: this.#mcpServers,
-      model: this.#model,
-      modelProvider: this.#modelProvider,
       prompt: this.#prompt,
       skills: this.#skills,
       systemPrompt: this.#systemPrompt,
-      wireApi: this.#wireApi,
       workspace: this.#workspace,
     });
   }
@@ -172,6 +185,30 @@ export class AgentRunHandle {
   result() {
     return this.#client.getRun(this.id);
   }
+
+  downloadArtifact(path: string) {
+    return this.#client.downloadArtifact({ path, runId: this.id });
+  }
+
+  async wait({
+    intervalMs = 1_000,
+    timeoutMs = 10 * 60 * 1_000,
+  }: AgentRunWaitOptions = {}) {
+    const deadline = Date.now() + timeoutMs;
+
+    while (true) {
+      const record = await this.result();
+      if (isTerminalStatus(record.status)) {
+        return record;
+      }
+
+      if (Date.now() >= deadline) {
+        throw new Error(`Run ${this.id} did not finish within ${timeoutMs}ms`);
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    }
+  }
 }
 
 export function createMesh0(options?: Mesh0ClientOptions) {
@@ -179,3 +216,7 @@ export function createMesh0(options?: Mesh0ClientOptions) {
 }
 
 export const mesh0 = createMesh0();
+
+function isTerminalStatus(status: AgentRunStatus) {
+  return status === "completed" || status === "failed" || status === "canceled";
+}

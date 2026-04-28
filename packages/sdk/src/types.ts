@@ -9,6 +9,7 @@ import type {
   appendRunEventsResultSchema,
   artifactRefSchema,
   completeRunInputSchema,
+  downloadRunArtifactInputSchema,
   gitSkillRefSchema,
   mcpServerConfigSchema,
   mcpServerEnvVarSchema,
@@ -16,12 +17,12 @@ import type {
   mcpServersSchema,
   mcpStdioServerSchema,
   mcpStreamableHttpServerSchema,
-  modelProviderConfigSchema,
+  openAiEnvSchema,
   runIdInputSchema,
   runnerRunConfigSchema,
   skillRefSchema,
+  uploadRunArtifactInputSchema,
   wellKnownSkillRefSchema,
-  wireApiSchema,
   workspaceRefSchema,
 } from "./schema";
 
@@ -65,17 +66,15 @@ export type WorkspaceRef = z.infer<typeof workspaceRefSchema>;
 
 export type AgentRunInput = z.infer<typeof agentRunInputSchema>;
 
+export type OpenAiEnv = z.infer<typeof openAiEnvSchema>;
+
 export type AgentRunStatus = z.infer<typeof agentRunStatusSchema>;
 
 export type ArtifactRef = z.infer<typeof artifactRefSchema>;
 
 export type AgentRunRecord = z.infer<typeof agentRunRecordSchema>;
 
-export type ModelProviderConfig = z.infer<typeof modelProviderConfigSchema>;
-
 export type RunnerRunConfig = z.infer<typeof runnerRunConfigSchema>;
-
-export type WireApi = z.infer<typeof wireApiSchema>;
 
 export type RunIdInput = z.infer<typeof runIdInputSchema>;
 
@@ -84,3 +83,11 @@ export type AppendRunEventsInput = z.infer<typeof appendRunEventsInputSchema>;
 export type AppendRunEventsResult = z.infer<typeof appendRunEventsResultSchema>;
 
 export type CompleteRunInput = z.infer<typeof completeRunInputSchema>;
+
+export type UploadRunArtifactInput = z.infer<
+  typeof uploadRunArtifactInputSchema
+>;
+
+export type DownloadRunArtifactInput = z.infer<
+  typeof downloadRunArtifactInputSchema
+>;

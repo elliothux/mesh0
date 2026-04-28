@@ -1,3 +1,4 @@
+import type { RunnerSandbox } from "@mesh0/adapters";
 import type { Db } from "@mesh0/db";
 import { agentRunEvents, agentRuns } from "@mesh0/db/schema";
 import type { AgentRun } from "@mesh0/db/types";
@@ -8,7 +9,6 @@ import type {
   AppendRunEventsInput,
   AppendRunEventsResult,
   CompleteRunInput,
-  ModelProviderConfig,
   RunIdInput,
   RunnerRunConfig,
 } from "@mesh0/sdk/types";
@@ -16,9 +16,6 @@ import type { ThreadEvent } from "@openai/codex-sdk";
 import { asc, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { resolveSystemPrompt } from "./system-prompt";
-
-const DEFAULT_BASE_URL_MODEL_PROVIDER = "mesh0-openai";
-const DEFAULT_WIRE_API = "responses";
 
 export class RunNotFoundError extends Error {
   constructor() {
@@ -29,9 +26,11 @@ export class RunNotFoundError extends Error {
 
 export class RunService {
   readonly #db: Db;
+  readonly #sandbox: RunnerSandbox | undefined;
 
-  constructor(db: Db) {
+  constructor(db: Db, sandbox?: RunnerSandbox) {
     this.#db = db;
+    this.#sandbox = sandbox;
   }
 
   async create(input: AgentRunInput): Promise<AgentRunRecord> {
@@ -52,7 +51,7 @@ export class RunService {
       status: record.status,
     });
 
-    return record;
+    return this.#startExecution(record);
   }
 
   async get({ runId }: RunIdInput): Promise<AgentRunRecord> {
@@ -149,45 +148,60 @@ export class RunService {
       .array()
       .parse(events.map(({ event }) => JSON.parse(event)));
   }
+
+  async #startExecution(record: AgentRunRecord) {
+    if (this.#sandbox === undefined) {
+      return record;
+    }
+
+    try {
+      const dispatch = await this.#sandbox.start({
+        run: record,
+      });
+      if (dispatch.completion !== undefined) {
+        void this.#completeOnDispatchFailure(record.id, dispatch.completion);
+      }
+      return record;
+    } catch (error) {
+      return this.complete({
+        completion: {
+          lastMessage: formatExecutionError(error),
+          status: "failed",
+        },
+        runId: record.id,
+      });
+    }
+  }
+
+  async #completeOnDispatchFailure(runId: string, completion: Promise<void>) {
+    try {
+      await completion;
+    } catch (error) {
+      const run = await this.#getStoredRun(runId);
+      if (run.finishedAt !== undefined) {
+        return;
+      }
+
+      await this.complete({
+        completion: {
+          lastMessage: formatExecutionError(error),
+          status: "failed",
+        },
+        runId,
+      });
+    }
+  }
 }
 
 function buildRunnerRunConfig(run: AgentRunRecord): RunnerRunConfig {
-  const modelProvider = buildModelProvider(run.input);
   return {
     baseInstructions: resolveSystemPrompt(run.input.systemPrompt),
+    env: run.input.env,
     mcpServers: run.input.mcpServers,
-    model: run.input.model,
-    modelProvider,
-    modelProviders: buildModelProviders(run.input, modelProvider),
     prompt: run.input.prompt,
     runId: run.id,
     skills: run.input.skills,
-  };
-}
-
-function buildModelProvider(input: AgentRunInput) {
-  if (input.baseUrl !== undefined) {
-    return input.modelProvider ?? DEFAULT_BASE_URL_MODEL_PROVIDER;
-  }
-
-  return input.modelProvider;
-}
-
-function buildModelProviders(
-  input: AgentRunInput,
-  modelProvider: string | undefined,
-): Record<string, ModelProviderConfig> | undefined {
-  if (input.baseUrl === undefined || modelProvider === undefined) {
-    return undefined;
-  }
-
-  return {
-    [modelProvider]: {
-      base_url: input.baseUrl,
-      env_key: "CODEX_API_KEY",
-      name: modelProvider,
-      wire_api: input.wireApi ?? DEFAULT_WIRE_API,
-    },
+    workspace: run.input.workspace,
   };
 }
 
@@ -202,4 +216,8 @@ function parseRun(run: AgentRun) {
     startedAt: run.startedAt ?? undefined,
     status: run.status,
   });
+}
+
+function formatExecutionError(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
 }

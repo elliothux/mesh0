@@ -91,5 +91,7 @@ RUN chmod +x /sandbox /usr/local/bin/mesh0-runner \
 
 WORKDIR /workspace
 
+EXPOSE 3000
+
 ENTRYPOINT ["/sandbox"]
 CMD ["mesh0-runner"]

@@ -1,0 +1,14 @@
+{
+  "name": "@mesh0/adapters",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./sandbox/*": "./src/sandbox/*.ts",
+    "./storage/*": "./src/storage/*.ts",
+    "./utils": "./src/utils.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  }
+}

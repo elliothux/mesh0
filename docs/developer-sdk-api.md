@@ -31,6 +31,11 @@ const run = await mesh0
   .systemPrompt({
     append: "Review code like a strict security engineer.",
   })
+  .env({
+    OPENAI_API_KEY,
+    OPENAI_BASE_URL,
+    OPENAI_MODEL,
+  })
   .prompt("Use $code-review to review PR #123.")
   .start();
 ```
@@ -38,13 +43,10 @@ const run = await mesh0
 - `mcp(...)`：声明本次运行可用的 MCP servers，key 是 server name。
 - `skills(...)`：声明本次运行可用的 skill refs。
 - `systemPrompt(...)`：声明稳定的 Agent 行为指令。
-- `baseUrl(...)`：声明本次运行使用的 OpenAI-compatible endpoint。
-- `model(...)`：声明本次运行使用的模型，可省略。
-- `modelProvider(...)`：声明本次运行使用的 provider key，可省略；传了 `baseUrl(...)` 且省略 provider 时，API 会生成本次运行的内部 provider 配置。
-- `wireApi(...)`：声明本次运行的 provider wire API，可省略，默认使用 `responses`。OpenAI-compatible chat 代理可以传 `"chat"`。
+- `env(...)`：声明本次运行的 OpenAI 环境变量，必须包含 `OPENAI_API_KEY`、`OPENAI_BASE_URL`、`OPENAI_MODEL`，额外 env 会原样传给 runner。
 - `prompt(...)`：声明任务输入。
 
-`OPENAI_BASE_URL`、`OPENAI_MODEL`、`OPENAI_MODEL_PROVIDER` 属于 run 级配置。API worker env 只接收服务端资源配置，例如 D1/R2 binding 和后续 auth 配置。
+OpenAI 配置属于 run 级 env。API worker env 只接收服务端资源配置，例如 D1/R2 binding 和后续 auth 配置。
 
 ## MCP 配置
 

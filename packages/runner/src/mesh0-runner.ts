@@ -1,6 +1,9 @@
 #!/usr/bin/env bun
 
+import { kindForArtifactPath } from "@mesh0/adapters/utils";
 import type { RpcClient } from "@mesh0/api";
+import { artifactRefSchema } from "@mesh0/sdk/schema";
+import type { ArtifactRef, RunnerRunConfig } from "@mesh0/sdk/types";
 import { resolveSystemPrompt } from "@mesh0/services/system-prompt";
 import { nanoid } from "nanoid";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -12,10 +15,11 @@ import {
   commandVersion,
   createApiClient,
   createWorkspaceArtifacts,
-  kindForObjectKey,
   parseRuntimeEvent,
   readJsonFile,
+  readJsonFileIfExists,
   readTextIfExists,
+  runCommand,
   teeStream,
 } from "./io";
 import type { OutputObject, RunnerOptions, RunnerStatus } from "./types";
@@ -56,11 +60,18 @@ async function run(options: RunnerOptions) {
   const paths = await prepareOutputDirs({ outputDir, runtimeDir, workspace });
   const log = (message: string) => appendLine(paths.runnerLogPath, message);
 
-  const config = parseRunConfig(await readJsonFile(runJsonPath));
+  const apiClient =
+    options.apiUrl === undefined ? undefined : createApiClient(options.apiUrl);
+  const config = await readRunnerConfig({
+    apiClient,
+    runId: options.runId,
+    runJsonPath,
+  });
   const runId = options.runId ?? config.runId ?? `run_${nanoid()}`;
   const baseInstructions =
     config.baseInstructions ?? resolveSystemPrompt(config.systemPrompt);
 
+  await prepareWorkspace({ config, log, workspace });
   await writeFile(
     join(runtimeDir, "config.toml"),
     renderConfigToml(config, baseInstructions),
@@ -76,11 +87,9 @@ async function run(options: RunnerOptions) {
 
   const prompt = buildPrompt({ config, runId, runtimeDir, workspace });
   const codexBin = process.env.MESH0_CODEX_BIN ?? "codex";
-  const apiClient =
-    options.apiUrl === undefined ? undefined : createApiClient(options.apiUrl);
   const codexArgs = buildCodexArgs({
     lastMessagePath: paths.lastMessagePath,
-    model: config.model,
+    model: config.env.OPENAI_MODEL,
     prompt,
     sandbox: config.sandbox ?? "workspace-write",
     approvalPolicy: config.approvalPolicy ?? "never",
@@ -93,6 +102,7 @@ async function run(options: RunnerOptions) {
     cwd: workspace,
     env: {
       ...process.env,
+      ...config.env,
       CODEX_HOME: runtimeDir,
     },
     stderr: "pipe",
@@ -130,10 +140,16 @@ async function run(options: RunnerOptions) {
     status,
   });
 
+  const artifacts = await buildCompletionArtifacts({
+    apiClient,
+    outputObjects,
+    runId,
+  });
+
   await maybeCompleteApiRun({
     apiClient,
+    artifacts,
     lastMessage,
-    outputObjects,
     runId,
     status,
   });
@@ -198,6 +214,54 @@ function parseOptions(args: string[]): RunnerOptions {
   return options;
 }
 
+async function readRunnerConfig({
+  apiClient,
+  runId,
+  runJsonPath,
+}: {
+  apiClient: RpcClient | undefined;
+  runId: string | undefined;
+  runJsonPath: string;
+}) {
+  const fileConfig = await readJsonFileIfExists(runJsonPath);
+  if (fileConfig !== undefined) {
+    return parseRunConfig(fileConfig);
+  }
+
+  if (apiClient !== undefined && runId !== undefined) {
+    return parseRunConfig(await apiClient.runs.input({ runId }));
+  }
+
+  return parseRunConfig(await readJsonFile(runJsonPath));
+}
+
+async function prepareWorkspace({
+  config,
+  log,
+  workspace,
+}: {
+  config: RunnerRunConfig;
+  log: (message: string) => Promise<void>;
+  workspace: string;
+}) {
+  const git = config.workspace?.git;
+  if (git === undefined) {
+    return;
+  }
+
+  await log(`clone ${redactGitUrl(git.url)}`);
+  await runCommand("git", ["clone", git.url, workspace], {
+    check: true,
+    secrets: [git.url],
+  });
+  if (git.ref !== undefined) {
+    await log(`checkout ${git.ref}`);
+    await runCommand("git", ["-C", workspace, "checkout", git.ref], {
+      check: true,
+    });
+  }
+}
+
 async function prepareOutputDirs({
   outputDir,
   runtimeDir,
@@ -238,7 +302,7 @@ function buildCodexArgs({
 }: {
   approvalPolicy: string;
   lastMessagePath: string;
-  model?: string;
+  model: string;
   prompt: string;
   sandbox: string;
   workspace: string;
@@ -253,13 +317,11 @@ function buildCodexArgs({
     "--skip-git-repo-check",
     "--output-last-message",
     lastMessagePath,
+    "--model",
+    model,
     "--config",
     `approval_policy="${approvalPolicy}"`,
   ];
-
-  if (model !== undefined) {
-    args.push("--model", model);
-  }
 
   args.push(prompt);
   return args;
@@ -328,16 +390,76 @@ async function writeOutputManifest({
   );
 }
 
+async function buildCompletionArtifacts({
+  apiClient,
+  outputObjects,
+  runId,
+}: {
+  apiClient: RpcClient | undefined;
+  outputObjects: OutputObject[];
+  runId: string;
+}) {
+  if (apiClient === undefined) {
+    return outputObjects.map((object) => ({
+      contentType: object.contentType,
+      id: object.digest,
+      kind: kindForArtifactPath(object.key),
+      runId,
+      uri: object.path,
+    }));
+  }
+
+  const artifacts: ArtifactRef[] = [];
+  for (const object of outputObjects) {
+    artifacts.push(
+      await uploadOutputObject({
+        apiClient,
+        object,
+        runId,
+      }),
+    );
+  }
+
+  return artifacts;
+}
+
+async function uploadOutputObject({
+  apiClient,
+  object,
+  runId,
+}: {
+  apiClient: RpcClient;
+  object: OutputObject;
+  runId: string;
+}) {
+  return artifactRefSchema.parse(
+    await apiClient.runs.uploadArtifact({
+      file: Bun.file(object.path, { type: object.contentType }),
+      path: outputObjectStoragePath(object, runId),
+      runId,
+    }),
+  );
+}
+
+function outputObjectStoragePath(object: OutputObject, runId: string) {
+  const prefix = `runs/${runId}/`;
+  if (!object.key.startsWith(prefix)) {
+    throw new Error(`Unexpected output object key: ${object.key}`);
+  }
+
+  return object.key.slice(prefix.length);
+}
+
 async function maybeCompleteApiRun({
   apiClient,
+  artifacts,
   lastMessage,
-  outputObjects,
   runId,
   status,
 }: {
   apiClient: RpcClient | undefined;
+  artifacts: ArtifactRef[];
   lastMessage: string;
-  outputObjects: OutputObject[];
   runId: string;
   status: RunnerStatus;
 }) {
@@ -347,12 +469,7 @@ async function maybeCompleteApiRun({
 
   await apiClient.runs.complete({
     completion: {
-      artifacts: outputObjects.map((object) => ({
-        id: object.digest,
-        kind: kindForObjectKey(object.key),
-        runId,
-        uri: object.path,
-      })),
+      artifacts,
       lastMessage,
       status,
     },
@@ -383,4 +500,19 @@ function readOptionValue(args: string[], index: number, option: string) {
     throw new Error(`${option} requires a value`);
   }
   return value;
+}
+
+function redactGitUrl(url: string) {
+  try {
+    const parsed = new URL(url);
+    if (parsed.username.length > 0) {
+      parsed.username = "[redacted]";
+    }
+    if (parsed.password.length > 0) {
+      parsed.password = "[redacted]";
+    }
+    return parsed.toString();
+  } catch {
+    return url;
+  }
 }

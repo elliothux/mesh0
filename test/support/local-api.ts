@@ -1,0 +1,90 @@
+import { DockerSandbox } from "@mesh0/adapters/sandbox/docker-runner";
+import { FsRunStorageProvider } from "@mesh0/adapters/storage/fs";
+import { createDb } from "@mesh0/db";
+import { Services } from "@mesh0/services";
+import { Database } from "bun:sqlite";
+import { drizzle } from "drizzle-orm/bun-sqlite";
+import { migrate } from "drizzle-orm/bun-sqlite/migrator";
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import type { Context } from "../../apps/api/src/context";
+import { corsHeaders, rpcHandler, withCors } from "../../apps/api/src/orpc";
+import { handleRunStorageRequest } from "../../apps/api/src/storage";
+import { createMemoryD1 } from "./memory-d1";
+
+const MIGRATIONS_DIR = resolve(import.meta.dir, "../../packages/db/migrations");
+
+export async function startLocalDockerFsApi({
+  runnerImage,
+}: {
+  runnerImage: string;
+}) {
+  let runnerApiUrl = "";
+  const sqlite = new Database(":memory:");
+  applyMigrations(sqlite);
+
+  const d1 = createMemoryD1(sqlite);
+  const db = createDb(d1);
+  const storage = new FsRunStorageProvider({
+    rootDir: await mkdtemp(join(tmpdir(), "mesh0-fs-storage-")),
+  });
+  const services = new Services({
+    db,
+    sandbox: new DockerSandbox({
+      apiUrl: () => runnerApiUrl,
+      image: runnerImage,
+    }),
+  });
+
+  const server = Bun.serve({
+    fetch: (request) => {
+      const context: Context = {
+        db,
+        env: { DB: d1 } as unknown as Context["env"],
+        services,
+        storage,
+      };
+
+      return handleApiRequest(request, context);
+    },
+    hostname: "0.0.0.0",
+    port: 0,
+  });
+
+  runnerApiUrl = `http://host.docker.internal:${server.port}`;
+
+  return {
+    apiUrl: `http://127.0.0.1:${server.port}`,
+    close() {
+      server.stop(true);
+      sqlite.close();
+    },
+  };
+}
+
+async function handleApiRequest(request: Request, context: Context) {
+  if (request.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders, status: 204 });
+  }
+
+  const storageResponse = await handleRunStorageRequest(request, context);
+  if (storageResponse !== undefined) {
+    return withCors(storageResponse);
+  }
+
+  const result = await rpcHandler.handle(request, {
+    context,
+    prefix: "/rpc",
+  });
+
+  if (result.matched) {
+    return withCors(result.response);
+  }
+
+  return withCors(new Response("Not Found", { status: 404 }));
+}
+
+function applyMigrations(sqlite: Database) {
+  migrate(drizzle(sqlite), { migrationsFolder: MIGRATIONS_DIR });
+}

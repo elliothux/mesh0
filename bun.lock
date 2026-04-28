@@ -6,7 +6,9 @@
       "name": "mesh0",
       "dependencies": {
         "@base-ui/react": "^1.4.1",
+        "@cloudflare/containers": "^0.3.3",
         "@fontsource-variable/inter": "^5.2.8",
+        "@mesh0/adapters": "workspace:*",
         "@mesh0/api": "workspace:*",
         "@mesh0/db": "workspace:*",
         "@mesh0/sdk": "workspace:*",
@@ -64,6 +66,9 @@
     },
     "apps/dashboard": {
       "name": "@mesh0/dashboard",
+    },
+    "packages/adapters": {
+      "name": "@mesh0/adapters",
     },
     "packages/db": {
       "name": "@mesh0/db",
@@ -155,6 +160,8 @@
     "@base-ui/utils": ["@base-ui/utils@0.2.8", "", { "dependencies": { "@babel/runtime": "^7.29.2", "@floating-ui/utils": "^0.2.11", "reselect": "^5.1.1", "use-sync-external-store": "^1.6.0" }, "peerDependencies": { "@types/react": "^17 || ^18 || ^19", "react": "^17 || ^18 || ^19", "react-dom": "^17 || ^18 || ^19" }, "optionalPeers": ["@types/react"] }, "sha512-jvOi+c+ftGlGotNcKnzPVg2IhCaDTB6/6R3JeqdjdXktuAJi3wKH9T7+svuaKh1mmfVU11UWzUZVH74JDfi/wQ=="],
 
     "@bramus/specificity": ["@bramus/specificity@2.4.2", "", { "dependencies": { "css-tree": "^3.0.0" }, "bin": { "specificity": "bin/cli.js" } }, "sha512-ctxtJ/eA+t+6q2++vj5j7FYX3nRu311q1wfYH3xjlLOsczhlhxAg2FWNUXhpGvAw3BWo1xBcvOV6/YLc2r5FJw=="],
+
+    "@cloudflare/containers": ["@cloudflare/containers@0.3.3", "", {}, "sha512-ZSXmArCoo5bVTp8pGAJdl5WKmwtZDcffJqr4JcZEbSmMIFjU+AlBqgysuxXMgu03Rp239cOdqerbjK7H0K2krQ=="],
 
     "@cloudflare/kv-asset-handler": ["@cloudflare/kv-asset-handler@0.4.2", "", {}, "sha512-SIOD2DxrRRwQ+jgzlXCqoEFiKOFqaPjhnNTGKXSRLvp1HiOvapLaFG2kEr9dYQTYe8rKrd9uvDUzmAITeNyaHQ=="],
 
@@ -339,6 +346,8 @@
     "@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.31", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.1.0", "@jridgewell/sourcemap-codec": "^1.4.14" } }, "sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw=="],
 
     "@lynx/ui": ["@lynx/ui@workspace:packages/ui"],
+
+    "@mesh0/adapters": ["@mesh0/adapters@workspace:packages/adapters"],
 
     "@mesh0/api": ["@mesh0/api@workspace:apps/api"],
 

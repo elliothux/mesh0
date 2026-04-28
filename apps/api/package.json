@@ -9,8 +9,8 @@
   "scripts": {
     "db:migrate:local": "wrangler d1 migrations apply mesh0 --local",
     "db:migrate:remote": "wrangler d1 migrations apply mesh0 --remote",
-    "deploy": "wrangler deploy src/index.ts",
-    "dev": "wrangler dev src/index.ts --port 5592",
+    "deploy": "wrangler deploy src/worker.ts",
+    "dev": "wrangler dev src/worker.ts --port 5592",
     "typecheck": "tsc --noEmit"
   }
 }

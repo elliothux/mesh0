@@ -1,0 +1,124 @@
+import { createMesh0, type AgentRunHandle } from "@mesh0/sdk";
+import type { OpenAiEnv } from "@mesh0/sdk/types";
+import { z } from "zod";
+
+const LAST_MESSAGE_PATH = "output/codex/last-message.txt";
+
+const smokeEnvSchema = z.strictObject({
+  OPENAI_API_KEY: z.string().min(1),
+  OPENAI_BASE_URL: z.string().min(1),
+  OPENAI_MODEL: z.string().min(1),
+  RUNNER_IMAGE: z.string().min(1),
+});
+
+interface SmokeEnv {
+  openai: OpenAiEnv;
+  runnerImage: string;
+}
+
+export function readSmokeEnv(): SmokeEnv {
+  const env = smokeEnvSchema.parse({
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+    OPENAI_BASE_URL:
+      process.env.RUNNER_SMOKE_BASE_URL ?? process.env.OPENAI_BASE_URL,
+    OPENAI_MODEL: process.env.RUNNER_SMOKE_MODEL ?? process.env.OPENAI_MODEL,
+    RUNNER_IMAGE: process.env.RUNNER_IMAGE ?? "mesh0/runner:local",
+  });
+
+  return {
+    openai: {
+      OPENAI_API_KEY: env.OPENAI_API_KEY,
+      OPENAI_BASE_URL: env.OPENAI_BASE_URL,
+      OPENAI_MODEL: env.OPENAI_MODEL,
+    },
+    runnerImage: env.RUNNER_IMAGE,
+  };
+}
+
+export async function runSdkUserFlow({
+  apiUrl,
+  env,
+  expectedText = "mesh0-runner-smoke-ok",
+  label,
+  question,
+}: {
+  apiUrl: string;
+  env: OpenAiEnv;
+  expectedText?: string;
+  label: string;
+  question?: string;
+}) {
+  const mesh0 = createMesh0({ apiUrl });
+  const run = await mesh0
+    .agent()
+    .env(env)
+    .systemPrompt({
+      append: "Keep this smoke-test response to the requested exact text.",
+    })
+    .prompt(question ?? `Respond with exactly: ${expectedText}`)
+    .start();
+  const result = await run.wait({ timeoutMs: 10 * 60 * 1_000 });
+
+  if (result.status !== "completed") {
+    throw new Error(
+      [
+        `Expected completed run, got ${result.status}: ${result.lastMessage ?? ""}`,
+        await readOptionalArtifact(run, "output/mesh0/runner.log"),
+        await readOptionalArtifact(run, "output/codex/stderr.log"),
+      ]
+        .filter((part) => part.length > 0)
+        .join("\n"),
+    );
+  }
+
+  assert(
+    result.status === "completed",
+    `Expected completed run, got ${result.status}: ${result.lastMessage ?? ""}`,
+  );
+  assert(
+    result.lastMessage?.includes(expectedText),
+    `Unexpected last message: ${result.lastMessage ?? ""}`,
+  );
+  assert(
+    result.artifacts.some((artifact) =>
+      artifact.uri.startsWith(`/runs/${run.id}/storage/output/`),
+    ),
+    `Expected runner artifacts to be stored: ${JSON.stringify(result.artifacts)}`,
+  );
+
+  const lastMessageResponse = await run.downloadArtifact(LAST_MESSAGE_PATH);
+  assert(
+    lastMessageResponse.headers.get("content-type")?.startsWith("text/plain"),
+    `Expected text artifact content type, got ${lastMessageResponse.headers.get("content-type") ?? ""}`,
+  );
+
+  const downloadedLastMessage = await lastMessageResponse.text();
+  assert(
+    downloadedLastMessage.includes(expectedText),
+    `Unexpected downloaded artifact: ${downloadedLastMessage}`,
+  );
+
+  let eventCount = 0;
+  for await (const _event of run.events()) {
+    eventCount += 1;
+  }
+  assert(eventCount > 0, "Expected runner to post at least one event");
+
+  console.log(`${label}-ok ${run.id}`);
+  return { runId: run.id };
+}
+
+function assert(condition: unknown, message: string): asserts condition {
+  if (!condition) {
+    throw new Error(message);
+  }
+}
+
+async function readOptionalArtifact(run: AgentRunHandle, path: string) {
+  try {
+    const response = await run.downloadArtifact(path);
+    return `${path}:\n${await response.text()}`;
+  } catch {
+    return "";
+  }
+}

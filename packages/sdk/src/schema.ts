@@ -3,9 +3,10 @@ import { z } from "zod";
 import type { ContentBlock as McpContentBlock } from "@modelcontextprotocol/sdk/types.js";
 
 const nonEmptyStringSchema = z.string().min(1);
-const urlStringSchema = z.string().url();
 const toolApprovalModeSchema = z.enum(["auto", "prompt", "approve"]);
 const mcpContentBlockSchema = z.custom<McpContentBlock>();
+
+export const MAX_ARTIFACT_UPLOAD_BYTES = 100_000_000;
 
 export const mcpServerToolConfigSchema = z.strictObject({
   approval_mode: toolApprovalModeSchema.optional(),
@@ -95,29 +96,24 @@ export const workspaceRefSchema = z.strictObject({
     .optional(),
 });
 
-export const wireApiSchema = z.enum(["chat", "responses"]);
+const urlStringSchema = z.string().url();
 
-export const agentRunInputSchema = z
-  .strictObject({
-    workspace: workspaceRefSchema.optional(),
-    mcpServers: mcpServersSchema.optional(),
-    skills: z.array(skillRefSchema).optional(),
-    systemPrompt: agentSystemPromptSchema.optional(),
-    prompt: nonEmptyStringSchema,
-    baseUrl: urlStringSchema.optional(),
-    model: nonEmptyStringSchema.optional(),
-    modelProvider: nonEmptyStringSchema.optional(),
-    wireApi: wireApiSchema.optional(),
+export const openAiEnvSchema = z
+  .looseObject({
+    OPENAI_API_KEY: nonEmptyStringSchema,
+    OPENAI_BASE_URL: urlStringSchema,
+    OPENAI_MODEL: nonEmptyStringSchema,
   })
-  .superRefine(({ baseUrl, wireApi }, context) => {
-    if (wireApi !== undefined && baseUrl === undefined) {
-      context.addIssue({
-        code: "custom",
-        message: "wireApi requires baseUrl",
-        path: ["wireApi"],
-      });
-    }
-  });
+  .catchall(z.string());
+
+export const agentRunInputSchema = z.strictObject({
+  workspace: workspaceRefSchema.optional(),
+  mcpServers: mcpServersSchema.optional(),
+  skills: z.array(skillRefSchema).optional(),
+  systemPrompt: agentSystemPromptSchema.optional(),
+  env: openAiEnvSchema,
+  prompt: nonEmptyStringSchema,
+});
 
 export const agentRunStatusSchema = z.enum([
   "queued",
@@ -281,25 +277,15 @@ export const runIdInputSchema = z.strictObject({
   runId: nonEmptyStringSchema,
 });
 
-export const modelProviderConfigSchema = z.strictObject({
-  name: nonEmptyStringSchema,
-  env_key: nonEmptyStringSchema,
-  base_url: nonEmptyStringSchema,
-  wire_api: wireApiSchema.optional(),
-});
-
 export const runnerRunConfigSchema = z.strictObject({
   runId: nonEmptyStringSchema.optional(),
   prompt: nonEmptyStringSchema,
+  workspace: workspaceRefSchema.optional(),
   systemPrompt: agentSystemPromptSchema.optional(),
   baseInstructions: nonEmptyStringSchema.optional(),
   mcpServers: mcpServersSchema.optional(),
   skills: z.array(skillRefSchema).optional(),
-  model: nonEmptyStringSchema.optional(),
-  modelProvider: nonEmptyStringSchema.optional(),
-  modelProviders: z
-    .record(nonEmptyStringSchema, modelProviderConfigSchema)
-    .optional(),
+  env: openAiEnvSchema,
   sandbox: z
     .enum(["read-only", "workspace-write", "danger-full-access"])
     .optional(),
@@ -324,4 +310,26 @@ export const appendRunEventsResultSchema = z.strictObject({
 
 export const completeRunInputSchema = runIdInputSchema.extend({
   completion: runCompletionSchema,
+});
+
+const artifactBlobSchema = z.instanceof(Blob);
+
+export const uploadRunArtifactInputSchema = runIdInputSchema
+  .extend({
+    file: artifactBlobSchema,
+    path: nonEmptyStringSchema,
+  })
+  .superRefine(({ file }, context) => {
+    if (file.size > MAX_ARTIFACT_UPLOAD_BYTES) {
+      context.addIssue({
+        code: "too_big",
+        maximum: MAX_ARTIFACT_UPLOAD_BYTES,
+        message: "Artifact upload must be 100MB or smaller",
+        origin: "file",
+      });
+    }
+  });
+
+export const downloadRunArtifactInputSchema = runIdInputSchema.extend({
+  path: nonEmptyStringSchema,
 });

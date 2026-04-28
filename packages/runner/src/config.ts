@@ -4,6 +4,8 @@ import { runnerRunConfigSchema } from "@mesh0/sdk/schema";
 
 import type { RunnerRunConfig } from "@mesh0/sdk/types";
 
+const MODEL_PROVIDER = "mesh0-openai";
+
 export function parseRunConfig(value: unknown): RunnerRunConfig {
   return runnerRunConfigSchema.parse(value);
 }
@@ -14,17 +16,18 @@ export function renderConfigToml(
 ) {
   const lines: string[] = [
     `base_instructions = ${tomlValue(baseInstructions)}`,
+    `model = ${tomlValue(config.env.OPENAI_MODEL)}`,
+    `model_provider = ${tomlValue(MODEL_PROVIDER)}`,
   ];
 
-  if (config.model !== undefined) {
-    lines.push(`model = ${tomlValue(config.model)}`);
-  }
-
-  if (config.modelProvider !== undefined) {
-    lines.push(`model_provider = ${tomlValue(config.modelProvider)}`);
-  }
-
-  appendTables(lines, "model_providers", config.modelProviders);
+  appendTables(lines, "model_providers", {
+    [MODEL_PROVIDER]: {
+      base_url: config.env.OPENAI_BASE_URL,
+      env_key: "OPENAI_API_KEY",
+      name: MODEL_PROVIDER,
+      wire_api: "chat",
+    },
+  });
   appendTables(lines, "mcp_servers", config.mcpServers);
 
   return `${lines.join("\n")}\n`;

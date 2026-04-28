@@ -146,7 +146,16 @@ export async function commandVersion(command: string, args: string[]) {
   return output.length === 0 ? "unknown" : output;
 }
 
-async function runCommand(command: string, args: string[]) {
+interface RunCommandOptions {
+  check?: boolean;
+  secrets?: string[];
+}
+
+export async function runCommand(
+  command: string,
+  args: string[],
+  { check = false, secrets = [] }: RunCommandOptions = {},
+) {
   const proc = Bun.spawn([command, ...args], {
     stderr: "pipe",
     stdout: "pipe",
@@ -158,12 +167,33 @@ async function runCommand(command: string, args: string[]) {
     proc.exited,
   ]);
 
+  if (check && exitCode !== 0) {
+    throw new Error(
+      redact(
+        [
+          `${command} ${args.join(" ")} failed with exit code ${exitCode}`,
+          stdout,
+          stderr,
+        ].join("\n"),
+        secrets,
+      ),
+    );
+  }
+
   return { exitCode, stderr, stdout };
 }
 
 export async function readJsonFile(path: string) {
   const value: unknown = JSON.parse(await readFile(path, "utf8"));
   return value;
+}
+
+export async function readJsonFileIfExists(path: string) {
+  if (!(await pathExists(path))) {
+    return undefined;
+  }
+
+  return readJsonFile(path);
 }
 
 export async function readTextIfExists(path: string) {
@@ -177,26 +207,6 @@ export async function readTextIfExists(path: string) {
 export async function appendLine(path: string, message: string) {
   await mkdir(dirname(path), { recursive: true });
   await appendFile(path, `${new Date().toISOString()} ${message}\n`);
-}
-
-export function kindForObjectKey(key: string) {
-  if (key.includes("/workspace/git-diff.patch")) {
-    return "patch";
-  }
-
-  if (key.includes("/workspace/snapshot.tar.gz")) {
-    return "directory";
-  }
-
-  if (key.endsWith(".json") || key.endsWith(".jsonl")) {
-    return "json";
-  }
-
-  if (key.endsWith(".log")) {
-    return "log";
-  }
-
-  return "text";
 }
 
 async function sha256File(path: string) {
@@ -258,6 +268,15 @@ function contentTypeForObjectKey(key: string) {
   }
 
   return "text/plain";
+}
+
+function redact(value: string, secrets: string[]) {
+  let output = value;
+  for (const secret of secrets) {
+    output = output.replaceAll(secret, "[redacted]");
+  }
+
+  return output;
 }
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {

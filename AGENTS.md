@@ -94,6 +94,7 @@ Rules below are invariants. Violating any of these creates bugs or maintenance r
 - Do not use `as` casts unless there is no sound alternative.
 - Prefer narrowing, generics, and deriving types from the source.
 - Prefer explicit source types over indexed/reference indirection when the source type can be imported directly.
+- Do not use triple-slash `/// <reference types="..." />` directives; import external types directly with `import type` at use sites.
 
 ### Frontend
 
@@ -106,6 +107,7 @@ Rules below are invariants. Violating any of these creates bugs or maintenance r
 - Prefer tests that exercise real user-facing paths instead of implementation details.
 - Keep fixtures realistic and minimal.
 - Avoid test-only hooks that bypass true runtime behavior unless explicitly required.
+- Keep test-only harnesses, local shims, and fake adapters in `test/*` or test-owned files; do not export them from production packages.
 
 ### Git
 

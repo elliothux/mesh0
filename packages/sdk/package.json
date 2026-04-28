@@ -4,6 +4,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./artifacts": "./src/artifacts.ts",
     "./schema": "./src/schema.ts",
     "./types": "./src/types.ts"
   },
