@@ -10,8 +10,6 @@
     "api:dev": "bun run --cwd apps/api dev",
     "check": "bun run format && bun run typecheck && bun run lint",
     "check:staged": "lint-staged",
-    "dashboard:build": "bun run --cwd apps/dashboard build",
-    "dashboard:dev": "bun run --cwd apps/dashboard dev",
     "db:generate": "bun run --cwd packages/db generate",
     "db:migrate": "bun run --cwd apps/api db:migrate:local",
     "db:migrate:remote": "bun run --cwd apps/api db:migrate:remote",
@@ -23,8 +21,8 @@
     "test:runner:worker": "bun run test/worker-api-dev-smoke-test.ts",
     "typecheck": "bun run --filter './packages/*' typecheck && bun run --filter './apps/*' typecheck",
     "ui:add": "bun run ./scripts/ui-add.ts",
-    "website:build": "bun run --cwd apps/website build",
-    "website:dev": "bun run --cwd apps/website dev"
+    "web:build": "bun run --cwd apps/web build",
+    "web:dev": "bun run --cwd apps/web dev"
   },
   "simple-git-hooks": {
     "pre-commit": "test -f \"$(git rev-parse --git-path MERGE_HEAD)\" && exit 0 || bun run check:staged"
@@ -50,14 +48,12 @@
     "@orpc/server": "^1.14.0",
     "@splinetool/react-spline": "^4.1.0",
     "@tabler/icons-react": "^3.41.1",
-    "@tanstack/react-devtools": "latest",
-    "@tanstack/react-router": "latest",
-    "@tanstack/react-router-devtools": "latest",
-    "@tanstack/router-plugin": "^1.132.0",
+    "@workos-inc/node": "^9.1.1",
     "better-sqlite3": "^12.9.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "drizzle-orm": "^0.45.2",
+    "jose": "^6.2.3",
     "nanoid": "^5.1.9",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
@@ -69,14 +65,12 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260426.1",
-    "@tailwindcss/vite": "^4.2.4",
     "@types/bun": "latest",
     "@types/node": "^22.10.2",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^6.0.1",
     "drizzle-kit": "^0.31.10",
-    "jsdom": "^28.1.0",
     "knip": "^5.85.0",
     "lint-staged": "^16.4.0",
     "oxlint": "^1.50.0",
@@ -86,7 +80,6 @@
     "simple-git-hooks": "^2.13.1",
     "typescript": "^6.0.2",
     "vite": "^8.0.0",
-    "vitest": "^4.1.5",
     "wrangler": "^4.85.0"
   },
   "peerDependencies": {

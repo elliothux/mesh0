@@ -15,6 +15,13 @@
       "when": 1777352844775,
       "tag": "0001_greedy_jean_grey",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1777435569803,
+      "tag": "0002_gifted_molten_man",
+      "breakpoints": true
     }
   ]
 }

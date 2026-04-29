@@ -40,8 +40,24 @@ export async function startLocalDockerFsApi({
   const server = Bun.serve({
     fetch: (request) => {
       const context: Context = {
+        auth: {
+          authenticateRequest: async () => {
+            throw new Error("Auth is not configured for local runner tests");
+          },
+          authenticateWithCode: async () => {
+            throw new Error("Auth is not configured for local runner tests");
+          },
+          getAuthorizationUrl: () => {
+            throw new Error("Auth is not configured for local runner tests");
+          },
+        },
         db,
-        env: { DB: d1 } as unknown as Context["env"],
+        env: {
+          DB: d1,
+          WORKOS_API_KEY: "sk_test_local",
+          WORKOS_CLIENT_ID: "client_local",
+        } as unknown as Context["env"],
+        request,
         services,
         storage,
       };

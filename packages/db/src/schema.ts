@@ -6,6 +6,18 @@ export const appStatus = sqliteTable("app_status", {
   updatedAt: integer("updated_at").notNull(),
 });
 
+export const users = sqliteTable("users", {
+  id: text("id").primaryKey(),
+  email: text("email").notNull(),
+  emailVerified: integer("email_verified", { mode: "boolean" }).notNull(),
+  firstName: text("first_name"),
+  lastName: text("last_name"),
+  profilePictureUrl: text("profile_picture_url"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+  lastSignInAt: text("last_sign_in_at"),
+});
+
 export const agentRuns = sqliteTable("agent_runs", {
   id: text("id").primaryKey(),
   input: text("input").notNull(),

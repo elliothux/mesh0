@@ -8,6 +8,8 @@ import type {
   appendRunEventsInputSchema,
   appendRunEventsResultSchema,
   artifactRefSchema,
+  authenticateUserInputSchema,
+  authenticatedUserSchema,
   completeRunInputSchema,
   downloadRunArtifactInputSchema,
   gitSkillRefSchema,
@@ -22,9 +24,26 @@ import type {
   runnerRunConfigSchema,
   skillRefSchema,
   uploadRunArtifactInputSchema,
+  userAuthorizationUrlInputSchema,
+  userAuthorizationUrlResultSchema,
+  userSchema,
   wellKnownSkillRefSchema,
   workspaceRefSchema,
 } from "./schema";
+
+export type User = z.infer<typeof userSchema>;
+
+export type UserAuthorizationUrlInput = z.infer<
+  typeof userAuthorizationUrlInputSchema
+>;
+
+export type UserAuthorizationUrlResult = z.infer<
+  typeof userAuthorizationUrlResultSchema
+>;
+
+export type AuthenticateUserInput = z.infer<typeof authenticateUserInputSchema>;
+
+export type AuthenticatedUser = z.infer<typeof authenticatedUserSchema>;
 
 export type McpServers = z.infer<typeof mcpServersSchema>;
 

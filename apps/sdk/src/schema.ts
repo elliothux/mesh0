@@ -8,6 +8,37 @@ const mcpContentBlockSchema = z.custom<McpContentBlock>();
 
 export const MAX_ARTIFACT_UPLOAD_BYTES = 100_000_000;
 
+export const userSchema = z.strictObject({
+  id: nonEmptyStringSchema,
+  email: nonEmptyStringSchema,
+  emailVerified: z.boolean(),
+  firstName: z.string().nullable(),
+  lastName: z.string().nullable(),
+  profilePictureUrl: z.string().nullable(),
+  createdAt: nonEmptyStringSchema,
+  updatedAt: nonEmptyStringSchema,
+  lastSignInAt: z.string().nullable(),
+});
+
+export const userAuthorizationUrlInputSchema = z.strictObject({
+  redirectUri: z.string().url().optional(),
+  state: nonEmptyStringSchema.optional(),
+});
+
+export const userAuthorizationUrlResultSchema = z.strictObject({
+  authorizationUrl: nonEmptyStringSchema,
+});
+
+export const authenticateUserInputSchema = z.strictObject({
+  code: nonEmptyStringSchema,
+});
+
+export const authenticatedUserSchema = z.strictObject({
+  accessToken: nonEmptyStringSchema,
+  refreshToken: nonEmptyStringSchema,
+  user: userSchema,
+});
+
 export const mcpServerToolConfigSchema = z.strictObject({
   approval_mode: toolApprovalModeSchema.optional(),
 });

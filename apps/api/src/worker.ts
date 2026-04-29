@@ -3,7 +3,9 @@ import { CloudflareSandbox } from "@mesh0/adapters/sandbox/cloudflare";
 import { R2Storage } from "@mesh0/adapters/storage/r2";
 import { createDb } from "@mesh0/db";
 import { Services } from "@mesh0/services";
+import { createWorkOSAuth, defaultRedirectUri, mapWorkOSUser } from "./auth";
 import type { Context, WorkerEnv } from "./context";
+import { parseAppEnv } from "./env";
 import { corsHeaders, rpcHandler, withCors } from "./orpc";
 import { handleRunStorageRequest } from "./storage";
 
@@ -20,6 +22,11 @@ export default {
     }
 
     const context = createWorkerContext(request, worker);
+    const authResponse = await handleAuthRequest(request, context);
+    if (authResponse !== undefined) {
+      return withCors(authResponse);
+    }
+
     const storageResponse = await handleRunStorageRequest(request, context);
     if (storageResponse !== undefined) {
       return withCors(storageResponse);
@@ -39,6 +46,8 @@ export default {
 };
 
 function createWorkerContext(request: Request, worker: WorkerEnv): Context {
+  const appEnv = parseAppEnv(worker);
+  const auth = createWorkOSAuth(appEnv);
   const db = createDb(worker.DB);
   const storage = new R2Storage({ bucket: worker.RUNS_BUCKET });
   const url = new URL(request.url);
@@ -58,5 +67,40 @@ function createWorkerContext(request: Request, worker: WorkerEnv): Context {
     sandbox,
   });
 
-  return { db, env: worker, services, storage };
+  return { auth, db, env: worker, request, services, storage };
+}
+
+async function handleAuthRequest(request: Request, context: Context) {
+  const url = new URL(request.url);
+
+  if (url.pathname === "/auth/login") {
+    const authorizationUrl = context.auth.getAuthorizationUrl({
+      redirectUri: defaultRedirectUri(request),
+      state: url.searchParams.get("state") ?? undefined,
+    });
+
+    return Response.redirect(authorizationUrl, 302);
+  }
+
+  if (url.pathname !== "/auth/callback") {
+    return undefined;
+  }
+
+  const code = url.searchParams.get("code");
+  if (code === null) {
+    return new Response("Missing code", { status: 400 });
+  }
+
+  const auth = await context.auth.authenticateWithCode({
+    code,
+    ipAddress: request.headers.get("CF-Connecting-IP") ?? undefined,
+    userAgent: request.headers.get("User-Agent") ?? undefined,
+  });
+  const user = await context.services.user.upsert(mapWorkOSUser(auth.user));
+
+  return Response.json({
+    accessToken: auth.accessToken,
+    refreshToken: auth.refreshToken,
+    user,
+  });
 }
