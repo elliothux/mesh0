@@ -43,7 +43,7 @@ const run = await mesh0
 - `mcp(...)`：声明本次运行可用的 MCP servers，key 是 server name。
 - `skills(...)`：声明本次运行可用的 skill refs。
 - `systemPrompt(...)`：声明稳定的 Agent 行为指令。
-- `env(...)`：声明本次运行的 OpenAI 环境变量，必须包含 `OPENAI_API_KEY`、`OPENAI_BASE_URL`、`OPENAI_MODEL`，额外 env 会原样传给 runner。
+- `env(...)`：声明本次运行的 OpenAI 环境变量，必须包含 `OPENAI_API_KEY`、`OPENAI_BASE_URL`、`OPENAI_MODEL`，其中 `OPENAI_BASE_URL` 需要指向兼容 Responses API 的 `/v1` base URL；额外 env 会原样传给 runner。
 - `prompt(...)`：声明任务输入。
 
 OpenAI 配置属于 run 级 env。API worker env 只接收服务端资源配置，例如 D1/R2 binding 和后续 auth 配置。
@@ -122,13 +122,13 @@ MCP tools 的名称、参数 schema、结果内容都来自 MCP server 的 `tool
 
 ## Prompt API
 
-`prompt(...)` 是本次任务输入，必填。`systemPrompt(...)` 是稳定行为指令，可选。Mesh0 默认使用自己的通用 Agent system prompt，不使用 coding-oriented 默认 system prompt。
+`prompt(...)` 是本次任务输入，必填。`systemPrompt(...)` 是稳定行为指令，可选。Mesh0 默认使用自己的通用 cloud agent system prompt。
 
 ```ts
 type AgentSystemPrompt = string | { append: string } | { replace: string };
 ```
 
-不传 `systemPrompt(...)` 时，使用 Mesh0 默认通用 Agent system prompt。
+不传 `systemPrompt(...)` 时，使用 Mesh0 默认通用 cloud agent system prompt。默认 prompt 覆盖 cloud sandbox 执行模型、上下文优先级、AGENTS.md 规则、工具纪律、MCP/skills、artifact 生成、验证、错误处理、安全边界和最终交付格式。
 
 `append` 追加到 Mesh0 默认通用 Agent system prompt：
 

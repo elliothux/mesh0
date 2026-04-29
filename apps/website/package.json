@@ -1,0 +1,11 @@
+{
+  "name": "@mesh0/website",
+  "private": true,
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite dev --port 5592",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "type": "module"
+}

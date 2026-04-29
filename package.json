@@ -22,7 +22,9 @@
     "test:runner:local": "bun run test/local-docker-fs-smoke-test.ts",
     "test:runner:worker": "bun run test/worker-api-dev-smoke-test.ts",
     "typecheck": "bun run --filter './packages/*' typecheck && bun run --filter './apps/*' typecheck",
-    "ui:add": "bun run ./scripts/ui-add.ts"
+    "ui:add": "bun run ./scripts/ui-add.ts",
+    "website:build": "bun run --cwd apps/website build",
+    "website:dev": "bun run --cwd apps/website dev"
   },
   "simple-git-hooks": {
     "pre-commit": "test -f \"$(git rev-parse --git-path MERGE_HEAD)\" && exit 0 || bun run check:staged"
@@ -35,6 +37,8 @@
     "@base-ui/react": "^1.4.1",
     "@cloudflare/containers": "^0.3.3",
     "@fontsource-variable/inter": "^5.2.8",
+    "@fontsource/anonymous-pro": "^5.2.8",
+    "@fontsource/instrument-serif": "^5.2.8",
     "@mesh0/adapters": "workspace:*",
     "@mesh0/api": "workspace:*",
     "@mesh0/db": "workspace:*",
@@ -44,6 +48,7 @@
     "@openai/codex-sdk": "^0.125.0",
     "@orpc/client": "^1.14.0",
     "@orpc/server": "^1.14.0",
+    "@splinetool/react-spline": "^4.1.0",
     "@tabler/icons-react": "^3.41.1",
     "@tanstack/react-devtools": "latest",
     "@tanstack/react-router": "latest",

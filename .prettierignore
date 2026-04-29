@@ -23,6 +23,7 @@ bun.lock
 *.gen.ts
 
 /assets/
+apps/website/src/assets/*.svg
 libs/**
 refs/**
 apps/desktop/resources/**
