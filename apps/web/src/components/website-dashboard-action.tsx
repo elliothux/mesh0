@@ -6,16 +6,26 @@ import { apiClient, apiUrl } from "../lib/api";
 import { WebsiteHeaderAction } from "./site-header";
 
 type ActionState = {
-  href: string;
   label: string;
   loading: boolean;
-};
+} & (
+  | {
+      href: string;
+      to?: never;
+    }
+  | {
+      href?: never;
+      to: "/runs";
+    }
+);
 
 const loadingState = {
   href: "#",
   label: "Loading",
   loading: true,
 } satisfies ActionState;
+
+let dashboardPreload: Promise<void> | undefined;
 
 export function WebsiteDashboardAction() {
   const [error, setError] = useState<unknown>(null);
@@ -30,9 +40,11 @@ export function WebsiteDashboardAction() {
 
     apiClient.user
       .me(undefined)
-      .then(() => {
+      .then(async () => {
+        await preloadDashboardRoutes();
+
         if (!cancelled) {
-          setState({ href: "/runs", label: "Dashboard", loading: false });
+          setState({ label: "Dashboard", loading: false, to: "/runs" });
         }
       })
       .catch((caught: unknown) => {
@@ -57,13 +69,7 @@ export function WebsiteDashboardAction() {
     };
   }, []);
 
-  return (
-    <WebsiteHeaderAction
-      href={state.href}
-      label={state.label}
-      loading={state.loading}
-    />
-  );
+  return <WebsiteHeaderAction {...state} />;
 }
 
 function createLoginUrl() {
@@ -72,4 +78,16 @@ function createLoginUrl() {
   loginUrl.searchParams.set("next", nextUrl.toString());
 
   return loginUrl.toString();
+}
+
+function preloadDashboardRoutes() {
+  dashboardPreload ??= Promise.all([
+    import("../routes/_dashboard/route"),
+    import("../routes/_dashboard/runs"),
+    import("../routes/_dashboard/artifacts"),
+    import("../routes/_dashboard/observability"),
+    import("../routes/_dashboard/keys"),
+  ]).then(() => undefined);
+
+  return dashboardPreload;
 }

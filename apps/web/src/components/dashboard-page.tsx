@@ -1,4 +1,5 @@
 import { Alert, AlertDescription, AlertTitle } from "@mesh0/ui/alert";
+import { cn } from "@mesh0/ui/lib/utils";
 import { IconAlertCircle, IconDatabaseOff } from "@tabler/icons-react";
 import type { ReactNode } from "react";
 
@@ -10,6 +11,7 @@ type DashboardPageProps = {
 };
 
 type DashboardStateProps = {
+  className?: string;
   description?: string;
   title: string;
   variant?: "empty" | "error" | "loading";
@@ -46,6 +48,7 @@ export function DashboardPage({
 }
 
 export function DashboardState({
+  className,
   description,
   title,
   variant = "empty",
@@ -63,7 +66,12 @@ export function DashboardState({
   }
 
   return (
-    <div className="grid min-h-40 place-items-center border border-dashed border-[var(--mesh-line-strong)] bg-black/20 p-6 text-center">
+    <div
+      className={cn(
+        "grid min-h-40 place-items-center border border-dashed border-[var(--mesh-line-strong)] bg-black/20 p-6 text-center",
+        className,
+      )}
+    >
       <div className="grid justify-items-center gap-2 text-[var(--mesh-muted)]">
         <IconDatabaseOff aria-hidden="true" className="size-5" />
         <h2 className="text-sm font-bold text-[var(--mesh-white)]">{title}</h2>

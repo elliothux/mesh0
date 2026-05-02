@@ -111,6 +111,10 @@ export const Route = createFileRoute("/_dashboard/artifacts")({
   validateSearch: (search): ArtifactsSearch =>
     fallbackArtifactsSearchSchema.parse(search),
   beforeLoad: ({ location }) => {
+    if (location.searchStr.length === 0) {
+      return;
+    }
+
     const result = artifactsSearchSchema.safeParse(
       Object.fromEntries(new URLSearchParams(location.searchStr)),
     );

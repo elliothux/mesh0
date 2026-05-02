@@ -123,6 +123,10 @@ export const Route = createFileRoute("/_dashboard/runs")({
   validateSearch: (search): RunsSearch =>
     fallbackRunsSearchSchema.parse(search),
   beforeLoad: ({ location }) => {
+    if (location.searchStr.length === 0) {
+      return;
+    }
+
     const result = runsSearchSchema.safeParse(
       Object.fromEntries(new URLSearchParams(location.searchStr)),
     );
@@ -297,6 +301,7 @@ function RunsPage() {
         </div>
         {runsQuery.isLoading ? (
           <DashboardState
+            className="min-h-[39rem]"
             description="Loading run records."
             title="Loading runs"
             variant="loading"

@@ -1,9 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "@fontsource/anonymous-pro/400.css";
-@import "@fontsource/anonymous-pro/700.css";
-@import "@fontsource/instrument-serif/400.css";
 @import "../../../packages/ui/src/style/theme.css";
 
 @source ".";

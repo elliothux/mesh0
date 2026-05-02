@@ -22,6 +22,7 @@ import { toast } from "sonner";
 import { apiClient, queryClient } from "../lib/api";
 
 type HeaderVariant = "website" | "dashboard";
+type LogoHref = "/" | "#top";
 
 type AnchorNavItem = {
   href: string;
@@ -40,8 +41,22 @@ export type SiteHeaderItem = AnchorNavItem | RouteNavItem;
 type SiteHeaderProps = {
   action: ReactNode;
   items: SiteHeaderItem[];
-  logoHref: string;
+  logoHref: LogoHref;
   variant: HeaderVariant;
+};
+
+type WebsiteHeaderActionProps = (
+  | {
+      href: string;
+      to?: undefined;
+    }
+  | {
+      href?: undefined;
+      to: "/runs";
+    }
+) & {
+  label: string;
+  loading?: boolean;
 };
 
 const floatingHeaderClass =
@@ -67,9 +82,15 @@ export function SiteHeader({
   return (
     <header className={floatingHeaderClass}>
       <div className={headerInnerClass}>
-        <a aria-label="mesh0 website" className={logoClass} href={logoHref}>
-          mesh0
-        </a>
+        {logoHref === "/" ? (
+          <Link aria-label="mesh0 website" className={logoClass} to="/">
+            mesh0
+          </Link>
+        ) : (
+          <a aria-label="mesh0 website" className={logoClass} href={logoHref}>
+            mesh0
+          </a>
+        )}
         <HeaderNav items={items} variant="desktop" />
         <div className="ml-auto flex items-center">{action}</div>
         {variant === "dashboard" && (
@@ -80,38 +101,49 @@ export function SiteHeader({
   );
 }
 
-export function WebsiteHeaderAction({
-  href,
-  label,
-  loading = false,
-}: {
-  href: string;
-  label: string;
-  loading?: boolean;
-}) {
+export function WebsiteHeaderAction(props: WebsiteHeaderActionProps) {
+  const { label, loading = false } = props;
+  const content = (
+    <>
+      {label}
+      {loading ? (
+        <IconLoader2 aria-hidden="true" className="animate-spin" />
+      ) : (
+        <IconExternalLink aria-hidden="true" />
+      )}
+    </>
+  );
+
   return (
     <span className="max-[560px]:hidden">
-      <a
-        aria-busy={loading}
-        aria-disabled={loading}
-        className={buttonVariants()}
-        data-slot="button"
-        href={href}
-        onClick={
-          loading
-            ? (event) => {
-                event.preventDefault();
-              }
-            : undefined
-        }
-      >
-        {label}
-        {loading ? (
-          <IconLoader2 aria-hidden="true" className="animate-spin" />
-        ) : (
-          <IconExternalLink aria-hidden="true" />
-        )}
-      </a>
+      {props.to !== undefined ? (
+        <Link
+          className={buttonVariants()}
+          data-slot="button"
+          preload="render"
+          search={{ page: 1, status: "all" }}
+          to={props.to}
+        >
+          {content}
+        </Link>
+      ) : (
+        <a
+          aria-busy={loading}
+          aria-disabled={loading}
+          className={buttonVariants()}
+          data-slot="button"
+          href={props.href}
+          onClick={
+            loading
+              ? (event) => {
+                  event.preventDefault();
+                }
+              : undefined
+          }
+        >
+          {content}
+        </a>
+      )}
     </span>
   );
 }
@@ -243,6 +275,7 @@ function DashboardNavLink({
       <Link
         className={className}
         data-active={dataActive}
+        preload="render"
         search={{ page: 1, status: "all" }}
         to={to}
       >
@@ -256,6 +289,7 @@ function DashboardNavLink({
       <Link
         className={className}
         data-active={dataActive}
+        preload="render"
         search={{ eventType: "all", page: 1 }}
         to={to}
       >
@@ -268,6 +302,7 @@ function DashboardNavLink({
     <Link
       className={className}
       data-active={dataActive}
+      preload="render"
       search={{ page: 1 }}
       to={to}
     >

@@ -374,10 +374,12 @@ async function testApiKeysPage(page: Page, webUrl: string) {
   await renamedKeyDialog
     .getByRole("button", { exact: true, name: "Revoke key" })
     .click();
-  const revokeAlert = page.getByRole("alertdialog");
-  await revokeAlert.getByRole("button", { name: "Revoke key" }).click();
+  const revokeDialog = page
+    .locator('[data-slot="dialog-content"]')
+    .filter({ has: page.getByRole("heading", { name: "Revoke API key" }) });
+  await revokeDialog.getByRole("button", { name: "Revoke key" }).click();
   await page.getByText("API key revoked").waitFor();
-  await revokeAlert.waitFor({ state: "hidden" });
+  await revokeDialog.waitFor({ state: "hidden" });
   await page
     .locator("tbody tr")
     .filter({ hasText: renamedKeyName })
@@ -405,7 +407,8 @@ async function testAccountMenu(page: Page, webUrl: string, userEmail: string) {
   await accountMenu.getByText(userEmail).waitFor();
   await page.getByRole("menuitem", { name: "Sign out" }).click();
   await page
-    .getByRole("alertdialog")
+    .locator('[data-slot="dialog-content"]')
+    .filter({ has: page.getByRole("heading", { name: "Sign out" }) })
     .getByRole("button", { name: "Sign out" })
     .click();
   await Promise.race([

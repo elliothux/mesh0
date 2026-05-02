@@ -4,7 +4,7 @@ export function appendSetCookieHeaders(source: Headers, target: Headers) {
   }
 }
 
-export function getSetCookieValues(headers: Headers) {
+function getSetCookieValues(headers: Headers) {
   const cookies = headers.getSetCookie();
   if (cookies.length > 0) {
     return cookies;

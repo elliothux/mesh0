@@ -139,6 +139,10 @@ export const Route = createFileRoute("/_dashboard/observability")({
   validateSearch: (search): ObservabilitySearch =>
     fallbackObservabilitySearchSchema.parse(search),
   beforeLoad: ({ location }) => {
+    if (location.searchStr.length === 0) {
+      return;
+    }
+
     const result = observabilitySearchSchema.safeParse(
       Object.fromEntries(new URLSearchParams(location.searchStr)),
     );

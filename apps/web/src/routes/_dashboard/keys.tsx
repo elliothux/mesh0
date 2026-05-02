@@ -101,6 +101,10 @@ export const Route = createFileRoute("/_dashboard/keys")({
   validateSearch: (search): ApiKeysSearch =>
     fallbackApiKeysSearchSchema.parse(search),
   beforeLoad: ({ location }) => {
+    if (location.searchStr.length === 0) {
+      return;
+    }
+
     const result = apiKeysSearchSchema.safeParse(
       Object.fromEntries(new URLSearchParams(location.searchStr)),
     );
