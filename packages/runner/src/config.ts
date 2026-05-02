@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { runnerRunConfigSchema } from "@mesh0/sdk/schema";
 
 import type { RunnerRunConfig } from "@mesh0/sdk/types";
+import type { PreparedSkill } from "./skills";
 
 const MODEL_PROVIDER = "mesh0-openai";
 
@@ -35,11 +36,13 @@ export function renderConfigToml(
 
 export function buildPrompt({
   config,
+  preparedSkills,
   runId,
   runtimeDir,
   workspace,
 }: {
   config: RunnerRunConfig;
+  preparedSkills?: PreparedSkill[];
   runId: string;
   runtimeDir: string;
   workspace: string;
@@ -49,7 +52,13 @@ export function buildPrompt({
     cwd: workspace,
     mcpServers: Object.keys(config.mcpServers ?? {}),
     runId,
-    skills: config.skills ?? [],
+    skills:
+      preparedSkills?.map(({ description, digest, name, path }) => ({
+        description,
+        digest,
+        name,
+        path,
+      })) ?? [],
     skillsRoot: join(runtimeDir, "skills"),
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
   };

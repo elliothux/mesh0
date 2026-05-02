@@ -22,6 +22,7 @@ import {
   runCommand,
   teeStream,
 } from "./io";
+import { prepareSkills } from "./skills";
 import type { OutputObject, RunnerOptions, RunnerStatus } from "./types";
 
 await main().catch((error: unknown) => {
@@ -73,93 +74,113 @@ async function run(options: RunnerOptions) {
   const baseInstructions =
     config.baseInstructions ?? resolveSystemPrompt(config.systemPrompt);
 
-  await prepareWorkspace({ config, log, workspace });
-  await writeFile(
-    join(runtimeDir, "config.toml"),
-    renderConfigToml(config, baseInstructions),
-  );
-  await writeFile(paths.execJsonlPath, "");
-  await writeFile(paths.stderrPath, "");
-  await writeFile(paths.lastMessagePath, "");
+  try {
+    await prepareWorkspace({ config, log, workspace });
+    const preparedSkills = await prepareSkills({ config, log, runtimeDir });
+    await writeFile(
+      join(runtimeDir, "config.toml"),
+      renderConfigToml(config, baseInstructions),
+    );
+    await writeFile(paths.execJsonlPath, "");
+    await writeFile(paths.stderrPath, "");
+    await writeFile(paths.lastMessagePath, "");
 
-  await log(`run ${runId} started`);
-  await log(`runtimeDir=${runtimeDir}`);
-  await log(`workspace=${workspace}`);
-  await log(`outputDir=${outputDir}`);
+    await log(`run ${runId} started`);
+    await log(`runtimeDir=${runtimeDir}`);
+    await log(`workspace=${workspace}`);
+    await log(`outputDir=${outputDir}`);
 
-  const prompt = buildPrompt({ config, runId, runtimeDir, workspace });
-  const codexBin = process.env.MESH0_CODEX_BIN ?? "codex";
-  const codexArgs = buildCodexArgs({
-    lastMessagePath: paths.lastMessagePath,
-    model: config.env.OPENAI_MODEL,
-    prompt,
-    sandbox: config.sandbox ?? "workspace-write",
-    approvalPolicy: config.approvalPolicy ?? "never",
-    workspace,
-  });
+    const prompt = buildPrompt({
+      config,
+      preparedSkills,
+      runId,
+      runtimeDir,
+      workspace,
+    });
+    const codexBin = process.env.MESH0_CODEX_BIN ?? "codex";
+    const codexArgs = buildCodexArgs({
+      lastMessagePath: paths.lastMessagePath,
+      model: config.env.OPENAI_MODEL,
+      prompt,
+      sandbox: config.sandbox ?? "workspace-write",
+      approvalPolicy: config.approvalPolicy ?? "never",
+      workspace,
+    });
 
-  await log(`exec ${codexBin} ${codexArgs.slice(0, -1).join(" ")} <prompt>`);
+    await log(`exec ${codexBin} ${codexArgs.slice(0, -1).join(" ")} <prompt>`);
 
-  const proc = Bun.spawn([codexBin, ...codexArgs], {
-    cwd: workspace,
-    env: {
-      ...process.env,
-      ...config.env,
-      CODEX_HOME: runtimeDir,
-    },
-    stderr: "pipe",
-    stdout: "pipe",
-  });
+    const proc = Bun.spawn([codexBin, ...codexArgs], {
+      cwd: workspace,
+      env: {
+        ...process.env,
+        ...config.env,
+        CODEX_HOME: runtimeDir,
+      },
+      stderr: "pipe",
+      stdout: "pipe",
+    });
 
-  const stdoutTask = teeStream(
-    proc.stdout,
-    paths.execJsonlPath,
-    async (line) => {
-      const event = parseRuntimeEvent(line);
-      if (apiClient !== undefined) {
-        await apiClient.runs.appendEvents({ events: event, runId });
-      }
-    },
-  );
-  const stderrTask = teeStream(proc.stderr, paths.stderrPath);
-  const [exitCode] = await Promise.all([proc.exited, stdoutTask, stderrTask]);
+    const stdoutTask = teeStream(
+      proc.stdout,
+      paths.execJsonlPath,
+      async (line) => {
+        const event = parseRuntimeEvent(line);
+        if (apiClient !== undefined) {
+          await apiClient.runs.appendEvents({ events: event, runId });
+        }
+      },
+    );
+    const stderrTask = teeStream(proc.stderr, paths.stderrPath);
+    const [exitCode] = await Promise.all([proc.exited, stdoutTask, stderrTask]);
 
-  await log(`codex exited with code ${exitCode}`);
+    await log(`codex exited with code ${exitCode}`);
 
-  const outputObjects = await collectOutputObjects({
-    paths,
-    runId,
-    workspace,
-    log,
-  });
-  const status: RunnerStatus = exitCode === 0 ? "completed" : "failed";
-  const lastMessage = await readTextIfExists(paths.lastMessagePath);
+    const outputObjects = await collectOutputObjects({
+      paths,
+      runId,
+      workspace,
+      log,
+    });
+    const status: RunnerStatus = exitCode === 0 ? "completed" : "failed";
+    const lastMessage = await readTextIfExists(paths.lastMessagePath);
 
-  await writeOutputManifest({
-    outputObjects,
-    manifestPath: paths.manifestPath,
-    runId,
-    status,
-  });
+    await writeOutputManifest({
+      outputObjects,
+      manifestPath: paths.manifestPath,
+      runId,
+      status,
+    });
 
-  const artifacts = await buildCompletionArtifacts({
-    apiClient,
-    outputObjects,
-    runId,
-  });
+    const artifacts = await buildCompletionArtifacts({
+      apiClient,
+      outputObjects,
+      runId,
+    });
 
-  await maybeCompleteApiRun({
-    apiClient,
-    artifacts,
-    lastMessage,
-    runId,
-    status,
-  });
+    await maybeCompleteApiRun({
+      apiClient,
+      artifacts,
+      lastMessage,
+      runId,
+      status,
+    });
 
-  await log(`run ${runId} ${status}`);
+    await log(`run ${runId} ${status}`);
 
-  if (exitCode !== 0) {
-    process.exit(exitCode);
+    if (exitCode !== 0) {
+      process.exit(exitCode);
+    }
+  } catch (error) {
+    const message = formatError(error);
+    await log(`run ${runId} failed: ${message}`);
+    await maybeCompleteApiRun({
+      apiClient,
+      artifacts: [],
+      lastMessage: message,
+      runId,
+      status: "failed",
+    });
+    throw error;
   }
 }
 
@@ -228,6 +249,10 @@ function requireRunnerToken(options: RunnerOptions) {
   }
 
   return options.runnerToken;
+}
+
+function formatError(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
 }
 
 async function readRunnerConfig({

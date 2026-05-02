@@ -5,6 +5,14 @@ import type { ContentBlock as McpContentBlock } from "@modelcontextprotocol/sdk/
 const nonEmptyStringSchema = z.string().min(1);
 const toolApprovalModeSchema = z.enum(["auto", "prompt", "approve"]);
 const mcpContentBlockSchema = z.custom<McpContentBlock>();
+const urlStringSchema = z.string().url();
+const httpUrlStringSchema = urlStringSchema.refine(
+  (value) => {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  },
+  { message: "URL must use http or https" },
+);
 
 export const MAX_ARTIFACT_UPLOAD_BYTES = 100_000_000;
 
@@ -88,7 +96,7 @@ export const mcpStdioServerSchema = mcpServerSharedConfigSchema.extend({
 
 export const mcpStreamableHttpServerSchema = mcpServerSharedConfigSchema.extend(
   {
-    url: nonEmptyStringSchema,
+    url: httpUrlStringSchema,
     bearer_token_env_var: nonEmptyStringSchema.optional(),
     http_headers: z.record(nonEmptyStringSchema, z.string()).optional(),
     env_http_headers: z.record(nonEmptyStringSchema, z.string()).optional(),
@@ -139,8 +147,6 @@ export const workspaceRefSchema = z.strictObject({
     })
     .optional(),
 });
-
-const urlStringSchema = z.string().url();
 
 export const openAiEnvSchema = z
   .looseObject({
