@@ -1,11 +1,14 @@
 import { buildArtifactRef } from "@mesh0/adapters/utils";
 import {
+  agentRunEventRecordSchema,
   agentRunInputSchema,
   agentRunRecordSchema,
   appendRunEventsInputSchema,
   appendRunEventsResultSchema,
   artifactRefSchema,
   completeRunInputSchema,
+  listRunsInputSchema,
+  runEventRecordsInputSchema,
   runIdInputSchema,
   runnerRunConfigSchema,
   threadEventSchema,
@@ -52,7 +55,22 @@ export const runRouter = {
     .output(threadEventSchema.array())
     .handler(({ context, input }) => {
       return mapRunError(() =>
-        context.services.run.getEventsForUser({
+        context.services.run.events({
+          runId: input.runId,
+          userId: context.user.id,
+        }),
+      );
+    }),
+
+  eventRecords: protectedProcedure
+    .input(runEventRecordsInputSchema)
+    .output(agentRunEventRecordSchema.array())
+    .handler(({ context, input }) => {
+      return mapRunError(() =>
+        context.services.run.eventRecords({
+          afterEventId: input.afterEventId,
+          eventType: input.eventType,
+          limit: input.limit,
           runId: input.runId,
           userId: context.user.id,
         }),
@@ -64,11 +82,21 @@ export const runRouter = {
     .output(agentRunRecordSchema)
     .handler(({ context, input }) => {
       return mapRunError(() =>
-        context.services.run.getForUser({
+        context.services.run.get({
           runId: input.runId,
           userId: context.user.id,
         }),
       );
+    }),
+
+  list: protectedProcedure
+    .input(listRunsInputSchema)
+    .output(agentRunRecordSchema.array())
+    .handler(({ context, input }) => {
+      return context.services.run.list({
+        limit: input.limit,
+        userId: context.user.id,
+      });
     }),
 
   input: procedure

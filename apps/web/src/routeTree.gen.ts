@@ -9,12 +9,15 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as DashboardRouteRouteImport } from './routes/_dashboard/route'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as DashboardRunsRouteImport } from './routes/_dashboard/runs'
+import { Route as DashboardObservabilityRouteImport } from './routes/_dashboard/observability'
+import { Route as DashboardKeysRouteImport } from './routes/_dashboard/keys'
+import { Route as DashboardArtifactsRouteImport } from './routes/_dashboard/artifacts'
 
-const DashboardRoute = DashboardRouteImport.update({
-  id: '/dashboard',
-  path: '/dashboard',
+const DashboardRouteRoute = DashboardRouteRouteImport.update({
+  id: '/_dashboard',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -22,40 +25,77 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DashboardRunsRoute = DashboardRunsRouteImport.update({
+  id: '/runs',
+  path: '/runs',
+  getParentRoute: () => DashboardRouteRoute,
+} as any)
+const DashboardObservabilityRoute = DashboardObservabilityRouteImport.update({
+  id: '/observability',
+  path: '/observability',
+  getParentRoute: () => DashboardRouteRoute,
+} as any)
+const DashboardKeysRoute = DashboardKeysRouteImport.update({
+  id: '/keys',
+  path: '/keys',
+  getParentRoute: () => DashboardRouteRoute,
+} as any)
+const DashboardArtifactsRoute = DashboardArtifactsRouteImport.update({
+  id: '/artifacts',
+  path: '/artifacts',
+  getParentRoute: () => DashboardRouteRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/dashboard': typeof DashboardRoute
+  '/artifacts': typeof DashboardArtifactsRoute
+  '/keys': typeof DashboardKeysRoute
+  '/observability': typeof DashboardObservabilityRoute
+  '/runs': typeof DashboardRunsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/dashboard': typeof DashboardRoute
+  '/artifacts': typeof DashboardArtifactsRoute
+  '/keys': typeof DashboardKeysRoute
+  '/observability': typeof DashboardObservabilityRoute
+  '/runs': typeof DashboardRunsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/dashboard': typeof DashboardRoute
+  '/_dashboard': typeof DashboardRouteRouteWithChildren
+  '/_dashboard/artifacts': typeof DashboardArtifactsRoute
+  '/_dashboard/keys': typeof DashboardKeysRoute
+  '/_dashboard/observability': typeof DashboardObservabilityRoute
+  '/_dashboard/runs': typeof DashboardRunsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/dashboard'
+  fullPaths: '/' | '/artifacts' | '/keys' | '/observability' | '/runs'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/dashboard'
-  id: '__root__' | '/' | '/dashboard'
+  to: '/' | '/artifacts' | '/keys' | '/observability' | '/runs'
+  id:
+    | '__root__'
+    | '/'
+    | '/_dashboard'
+    | '/_dashboard/artifacts'
+    | '/_dashboard/keys'
+    | '/_dashboard/observability'
+    | '/_dashboard/runs'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  DashboardRoute: typeof DashboardRoute
+  DashboardRouteRoute: typeof DashboardRouteRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/dashboard': {
-      id: '/dashboard'
-      path: '/dashboard'
-      fullPath: '/dashboard'
-      preLoaderRoute: typeof DashboardRouteImport
+    '/_dashboard': {
+      id: '/_dashboard'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof DashboardRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -65,12 +105,58 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_dashboard/runs': {
+      id: '/_dashboard/runs'
+      path: '/runs'
+      fullPath: '/runs'
+      preLoaderRoute: typeof DashboardRunsRouteImport
+      parentRoute: typeof DashboardRouteRoute
+    }
+    '/_dashboard/observability': {
+      id: '/_dashboard/observability'
+      path: '/observability'
+      fullPath: '/observability'
+      preLoaderRoute: typeof DashboardObservabilityRouteImport
+      parentRoute: typeof DashboardRouteRoute
+    }
+    '/_dashboard/keys': {
+      id: '/_dashboard/keys'
+      path: '/keys'
+      fullPath: '/keys'
+      preLoaderRoute: typeof DashboardKeysRouteImport
+      parentRoute: typeof DashboardRouteRoute
+    }
+    '/_dashboard/artifacts': {
+      id: '/_dashboard/artifacts'
+      path: '/artifacts'
+      fullPath: '/artifacts'
+      preLoaderRoute: typeof DashboardArtifactsRouteImport
+      parentRoute: typeof DashboardRouteRoute
+    }
   }
 }
 
+interface DashboardRouteRouteChildren {
+  DashboardArtifactsRoute: typeof DashboardArtifactsRoute
+  DashboardKeysRoute: typeof DashboardKeysRoute
+  DashboardObservabilityRoute: typeof DashboardObservabilityRoute
+  DashboardRunsRoute: typeof DashboardRunsRoute
+}
+
+const DashboardRouteRouteChildren: DashboardRouteRouteChildren = {
+  DashboardArtifactsRoute: DashboardArtifactsRoute,
+  DashboardKeysRoute: DashboardKeysRoute,
+  DashboardObservabilityRoute: DashboardObservabilityRoute,
+  DashboardRunsRoute: DashboardRunsRoute,
+}
+
+const DashboardRouteRouteWithChildren = DashboardRouteRoute._addFileChildren(
+  DashboardRouteRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  DashboardRoute: DashboardRoute,
+  DashboardRouteRoute: DashboardRouteRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

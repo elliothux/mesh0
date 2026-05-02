@@ -38,11 +38,13 @@ function DialogOverlay({
 }
 
 function DialogContent({
+  action,
   className,
   children,
   showCloseButton = true,
   ...props
 }: DialogPrimitive.Popup.Props & {
+  action?: React.ReactNode;
   showCloseButton?: boolean;
 }) {
   return (
@@ -51,26 +53,25 @@ function DialogContent({
       <DialogPrimitive.Popup
         data-slot="dialog-content"
         className={cn(
-          "bg-popover text-popover-foreground ring-foreground/10 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl p-4 text-sm ring-1 duration-100 outline-none sm:max-w-sm",
+          "bg-popover text-popover-foreground data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 ring-border fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-none p-4 text-sm ring-1 duration-100 outline-none sm:max-w-sm",
           className,
         )}
         {...props}
       >
         {children}
-        {showCloseButton && (
-          <DialogPrimitive.Close
-            data-slot="dialog-close"
-            render={
-              <Button
-                variant="ghost"
-                className="absolute top-2 right-2"
-                size="icon-sm"
-              />
-            }
-          >
-            <IconX />
-            <span className="sr-only">Close</span>
-          </DialogPrimitive.Close>
+        {(action !== undefined || showCloseButton) && (
+          <div className="absolute top-2 right-2 flex items-center gap-2">
+            {action}
+            {showCloseButton && (
+              <DialogPrimitive.Close
+                data-slot="dialog-close"
+                render={<Button size="icon-sm" />}
+              >
+                <IconX />
+                <span className="sr-only">Close</span>
+              </DialogPrimitive.Close>
+            )}
+          </div>
         )}
       </DialogPrimitive.Popup>
     </DialogPortal>
@@ -99,16 +100,14 @@ function DialogFooter({
     <div
       data-slot="dialog-footer"
       className={cn(
-        "bg-muted/50 -mx-4 -mb-4 flex flex-col-reverse gap-2 rounded-b-xl border-t p-4 sm:flex-row sm:justify-end",
+        "bg-muted/50 -mx-4 -mb-4 flex flex-col-reverse gap-2 rounded-none border-t p-4 sm:flex-row sm:justify-end",
         className,
       )}
       {...props}
     >
       {children}
       {showCloseButton && (
-        <DialogPrimitive.Close render={<Button variant="outline" />}>
-          Close
-        </DialogPrimitive.Close>
+        <DialogPrimitive.Close render={<Button />}>Close</DialogPrimitive.Close>
       )}
     </div>
   );

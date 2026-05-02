@@ -43,7 +43,17 @@ export type WorkOSAuth = {
     refreshToken: string;
     user: WorkOSUser;
   }>;
+  authenticateWithRefreshToken(input: {
+    ipAddress: string | undefined;
+    refreshToken: string;
+    userAgent: string | undefined;
+  }): Promise<{
+    accessToken: string;
+    refreshToken: string;
+    user: WorkOSUser;
+  }>;
   authenticateRequest(request: Request): Promise<AuthenticatedRequest>;
+  revokeSession(input: { sessionId: string }): Promise<void>;
 };
 
 export type AuthenticatedRequest = {
@@ -68,6 +78,17 @@ export function createWorkOSAuth(env: AppEnv): WorkOSAuth {
         ipAddress,
         userAgent,
       }),
+    authenticateWithRefreshToken: async ({
+      ipAddress,
+      refreshToken,
+      userAgent,
+    }) =>
+      workos.userManagement.authenticateWithRefreshToken({
+        clientId: env.WORKOS_CLIENT_ID,
+        ipAddress,
+        refreshToken,
+        userAgent,
+      }),
     getAuthorizationUrl: ({ redirectUri, state }) =>
       workos.userManagement.getAuthorizationUrl({
         clientId: env.WORKOS_CLIENT_ID,
@@ -75,6 +96,8 @@ export function createWorkOSAuth(env: AppEnv): WorkOSAuth {
         redirectUri,
         state,
       }),
+    revokeSession: ({ sessionId }) =>
+      workos.userManagement.revokeSession({ sessionId }),
   };
 }
 
@@ -133,6 +156,38 @@ export function appendAuthCookies({
     serializeCookie(AUTH_REFRESH_TOKEN_COOKIE, tokens.refreshToken, {
       domain,
       maxAge: AUTH_SESSION_MAX_AGE_SECONDS,
+      secure,
+    }),
+  );
+}
+
+export function expireAuthCookies({
+  env,
+  headers,
+  request,
+}: {
+  env: AppEnv;
+  headers: Headers;
+  request: Request;
+}) {
+  const requestUrl = new URL(request.url);
+  const isLocalRequest = isLocalHost(requestUrl.hostname);
+  const domain = isLocalRequest ? undefined : `.${env.APP_DOMAIN}`;
+  const secure = requestUrl.protocol === "https:" || !isLocalRequest;
+
+  headers.append(
+    "Set-Cookie",
+    serializeCookie(AUTH_ACCESS_TOKEN_COOKIE, "", {
+      domain,
+      maxAge: 0,
+      secure,
+    }),
+  );
+  headers.append(
+    "Set-Cookie",
+    serializeCookie(AUTH_REFRESH_TOKEN_COOKIE, "", {
+      domain,
+      maxAge: 0,
       secure,
     }),
   );
@@ -224,7 +279,7 @@ function serializeCookie(
   return parts.join("; ");
 }
 
-function getCookieValue(request: Request, name: string) {
+export function getCookieValue(request: Request, name: string) {
   const cookieHeader = request.headers.get("Cookie");
   if (cookieHeader === null) {
     return undefined;

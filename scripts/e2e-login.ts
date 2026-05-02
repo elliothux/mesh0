@@ -89,7 +89,7 @@ async function main() {
     await page.waitForLoadState("domcontentloaded");
 
     const finalUrl = page.url();
-    const dashboardUrl = new URL("/dashboard", webUrl).toString();
+    const dashboardUrl = new URL("/runs", webUrl).toString();
     const cookies = await context.cookies(webUrl);
     const authCookiePresent = cookies.some(
       (cookie) => cookie.name === AUTH_ACCESS_TOKEN_COOKIE,
@@ -100,6 +100,9 @@ async function main() {
     await page.goto(new URL("/", webUrl).toString(), {
       waitUntil: "domcontentloaded",
     });
+    await page
+      .getByRole("link", { name: /dashboard/i })
+      .waitFor({ state: "visible", timeout: 7_500 });
     const homeShowsDashboard =
       (await page.getByRole("link", { name: /dashboard/i }).count()) > 0;
     const homeShowsSignIn =
@@ -130,7 +133,7 @@ async function main() {
       throw new Error("home page still renders signed-out state");
     }
 
-    if (new URL(dashboardResultUrl).pathname !== "/dashboard") {
+    if (new URL(dashboardResultUrl).pathname !== "/runs") {
       throw new Error(`dashboard redirected to ${dashboardResultUrl}`);
     }
 

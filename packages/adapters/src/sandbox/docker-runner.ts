@@ -86,6 +86,7 @@ function buildRunnerCommand() {
       "--run-json /mesh0-runtime/run.json",
       '--api-url "$MESH0_API_URL"',
       '--run-id "$MESH0_RUN_ID"',
+      '--runner-token "$MESH0_RUNNER_TOKEN"',
     ].join(" "),
   ];
 

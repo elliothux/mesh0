@@ -1,6 +1,4 @@
-import "@fontsource/anonymous-pro/400.css";
-import "@fontsource/anonymous-pro/700.css";
-import "@fontsource/instrument-serif/400.css";
+import { DialogPortal } from "@mesh0/ui/dialog-portal";
 import { QueryClientProvider } from "@tanstack/react-query";
 import {
   HeadContent,
@@ -9,6 +7,7 @@ import {
   createRootRoute,
 } from "@tanstack/react-router";
 import type { ReactNode } from "react";
+import { Toaster } from "sonner";
 import { queryClient } from "../lib/api";
 import "../styles.css";
 
@@ -41,13 +40,27 @@ function RootComponent() {
 
 function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
   return (
-    <html lang="en">
+    <html className="dark" lang="en">
       <head>
         <HeadContent />
       </head>
       <body>
         <QueryClientProvider client={queryClient}>
           {children}
+          <DialogPortal />
+          <Toaster
+            className="mesh-toaster"
+            position="bottom-right"
+            toastOptions={{
+              style: {
+                background: "var(--mesh-panel-raised)",
+                border: "1px solid var(--mesh-line)",
+                borderRadius: "0px",
+                color: "var(--mesh-white)",
+                fontFamily: '"Anonymous Pro", ui-monospace, monospace',
+              },
+            }}
+          />
         </QueryClientProvider>
         <Scripts />
       </body>

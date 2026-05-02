@@ -64,6 +64,11 @@ export async function runSdkUserFlow({
     .prompt(question ?? `Respond with exactly: ${expectedText}`)
     .start();
   const result = await run.wait({ timeoutMs: 10 * 60 * 1_000 });
+  const listedRuns = await mesh0.listRuns({ limit: 10 });
+  assert(
+    listedRuns.some((record) => record.id === run.id),
+    `Expected run list to include ${run.id}`,
+  );
 
   if (result.status !== "completed") {
     throw new Error(
@@ -109,6 +114,44 @@ export async function runSdkUserFlow({
     eventCount += 1;
   }
   assert(eventCount > 0, "Expected runner to post at least one event");
+
+  const eventRecords = await run.eventRecords({ limit: 500 });
+  assert(
+    eventRecords.length === eventCount,
+    `Expected event record count ${eventCount}, got ${eventRecords.length}`,
+  );
+  assert(
+    eventRecords.every(
+      ({ event, eventType, runId }) =>
+        eventType === event.type && runId === run.id,
+    ),
+    `Expected event records to include normalized event metadata`,
+  );
+  const [typedEventRecord] = eventRecords;
+  assert(typedEventRecord !== undefined, "Expected typed event record");
+  const typedEventRecords = await run.eventRecords({
+    eventType: typedEventRecord.eventType,
+    limit: 500,
+  });
+  assert(
+    typedEventRecords.every(
+      ({ eventType }) => eventType === typedEventRecord.eventType,
+    ),
+    `Expected event type filter to constrain event records`,
+  );
+
+  const firstEventPage = await run.eventRecords({ limit: 1 });
+  assert(firstEventPage.length === 1, "Expected one event in first page");
+  const [firstEventRecord] = firstEventPage;
+  assert(firstEventRecord !== undefined, "Expected first event record");
+  const nextEventPage = await run.eventRecords({
+    afterEventId: firstEventRecord.id,
+    limit: 500,
+  });
+  assert(
+    nextEventPage.length === eventRecords.length - 1,
+    `Expected cursor pagination to return remaining events`,
+  );
 
   console.log(`${label}-ok ${run.id}`);
   return { runId: run.id };

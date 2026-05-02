@@ -1,6 +1,7 @@
 import type { z } from "zod";
 
 import type {
+  agentRunEventRecordSchema,
   agentRunInputSchema,
   agentRunRecordSchema,
   agentRunStatusSchema,
@@ -14,6 +15,7 @@ import type {
   createApiKeyResultSchema,
   downloadRunArtifactInputSchema,
   gitSkillRefSchema,
+  listRunsInputSchema,
   mcpServerConfigSchema,
   mcpServerEnvVarSchema,
   mcpServerToolConfigSchema,
@@ -21,9 +23,12 @@ import type {
   mcpStdioServerSchema,
   mcpStreamableHttpServerSchema,
   openAiEnvSchema,
+  renameApiKeyInputSchema,
   revokeApiKeyInputSchema,
+  runEventRecordsInputSchema,
   runIdInputSchema,
   runnerRunConfigSchema,
+  signOutResultSchema,
   skillRefSchema,
   uploadRunArtifactInputSchema,
   userSchema,
@@ -33,6 +38,8 @@ import type {
 
 export type User = z.infer<typeof userSchema>;
 
+export type SignOutResult = z.infer<typeof signOutResultSchema>;
+
 export type ApiKey = z.infer<typeof apiKeySchema>;
 
 export type CreateApiKeyInput = z.infer<typeof createApiKeyInputSchema>;
@@ -40,6 +47,8 @@ export type CreateApiKeyInput = z.infer<typeof createApiKeyInputSchema>;
 export type CreateApiKeyResult = z.infer<typeof createApiKeyResultSchema>;
 
 export type RevokeApiKeyInput = z.infer<typeof revokeApiKeyInputSchema>;
+
+export type RenameApiKeyInput = z.infer<typeof renameApiKeyInputSchema>;
 
 export type McpServers = z.infer<typeof mcpServersSchema>;
 
@@ -88,6 +97,12 @@ export type AgentRunStatus = z.infer<typeof agentRunStatusSchema>;
 export type ArtifactRef = z.infer<typeof artifactRefSchema>;
 
 export type AgentRunRecord = z.infer<typeof agentRunRecordSchema>;
+
+export type AgentRunEventRecord = z.infer<typeof agentRunEventRecordSchema>;
+
+export type ListRunsInput = z.infer<typeof listRunsInputSchema>;
+
+export type RunEventRecordsInput = z.infer<typeof runEventRecordsInputSchema>;
 
 export type RunnerRunConfig = z.infer<typeof runnerRunConfigSchema>;
 

@@ -104,6 +104,9 @@ Rules below are invariants. Violating any of these creates bugs or maintenance r
 - Move static non-primitive values outside React components.
 - Split components by concern; extract only when reuse is real.
 - Keep prop shapes direct; avoid ad-hoc objects at call sites.
+- Use Tailwind CSS for app styling. Keep route call sites focused on composition by putting reusable styles behind shared components or local component-owned style constants.
+- Install base UI primitives such as Dialog, Button, Input, Avatar, and Tabs with `bun run ui:add <component>` into `packages/ui`. Build product components from those primitives instead of hand-writing foundation components in `apps/web`.
+- Do not use CSS `!important` or Tailwind important modifiers such as `!` and `![...]` to override styles. Fix the owning component, selector, or cascade order instead.
 
 ### Testing
 

@@ -55,6 +55,7 @@ function buildRunnerEntrypoint() {
         "--output-dir /mesh0-runtime/output",
         '--api-url "$MESH0_API_URL"',
         '--run-id "$MESH0_RUN_ID"',
+        '--runner-token "$MESH0_RUNNER_TOKEN"',
       ].join(" "),
     ].join("; "),
   ];

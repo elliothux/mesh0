@@ -37,6 +37,12 @@ type RevokeApiKeyInput = {
   userId: string;
 };
 
+type RenameApiKeyInput = {
+  apiKeyId: string;
+  name: string;
+  userId: string;
+};
+
 export class ApiKeyService {
   readonly #db: Db;
 
@@ -108,6 +114,16 @@ export class ApiKeyService {
       .where(eq(apiKeys.id, apiKey.id));
 
     return serializeApiKey({ ...apiKey, revokedAt });
+  }
+
+  async rename({ apiKeyId, name, userId }: RenameApiKeyInput) {
+    const apiKey = await this.#getUserKey({ apiKeyId, userId });
+    await this.#db
+      .update(apiKeys)
+      .set({ name })
+      .where(eq(apiKeys.id, apiKey.id));
+
+    return serializeApiKey({ ...apiKey, name });
   }
 
   async #getActive(id: string) {

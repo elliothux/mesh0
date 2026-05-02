@@ -18,7 +18,7 @@ export async function handleRunStorageRequest(
 
   try {
     const user = await authenticateContextUser(context);
-    await context.services.run.getForUser({
+    await context.services.run.get({
       runId: input.runId,
       userId: user.id,
     });

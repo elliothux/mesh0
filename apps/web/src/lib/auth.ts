@@ -1,22 +1,36 @@
-import { AUTH_ACCESS_TOKEN_COOKIE } from "@mesh0/sdk/auth";
+import {
+  AUTH_ACCESS_TOKEN_COOKIE,
+  AUTH_REFRESH_TOKEN_COOKIE,
+} from "@mesh0/sdk/auth";
 import type { User } from "@mesh0/sdk/types";
 import { ORPCError } from "@orpc/client";
 import { redirect } from "@tanstack/react-router";
-import { getRequestHeader } from "@tanstack/react-start/server";
+import {
+  getRequestHeader,
+  setResponseHeader,
+} from "@tanstack/react-start/server";
 import { apiClient } from "./api";
+import { getSetCookieValues } from "./headers";
 
-export async function getCurrentUser(): Promise<User | null> {
+async function getCurrentUser(): Promise<User | null> {
   const cookie = getRequestHeader("cookie");
-  if (cookie === undefined || !hasCookie(cookie, AUTH_ACCESS_TOKEN_COOKIE)) {
+  if (cookie === undefined || !hasAuthCookie(cookie)) {
     return null;
   }
 
+  const responseHeaders = new Headers();
+
   try {
-    return await apiClient.user.me(undefined, {
-      context: { cookie },
+    const user = await apiClient.user.me(undefined, {
+      context: { cookie, responseHeaders },
     });
+    forwardSetCookieHeaders(responseHeaders);
+
+    return user;
   } catch (error) {
     if (error instanceof ORPCError && error.code === "UNAUTHORIZED") {
+      forwardSetCookieHeaders(responseHeaders);
+
       if (import.meta.env.DEV) {
         console.warn(`user.me unauthorized: ${error.message}`);
       }
@@ -25,6 +39,13 @@ export async function getCurrentUser(): Promise<User | null> {
     }
 
     throw error;
+  }
+}
+
+function forwardSetCookieHeaders(headers: Headers) {
+  const cookies = getSetCookieValues(headers);
+  if (cookies.length > 0) {
+    setResponseHeader("set-cookie", cookies);
   }
 }
 
@@ -41,4 +62,11 @@ function hasCookie(cookieHeader: string, name: string) {
   return cookieHeader
     .split(";")
     .some((cookie) => cookie.trim().startsWith(`${name}=`));
+}
+
+function hasAuthCookie(cookieHeader: string) {
+  return (
+    hasCookie(cookieHeader, AUTH_ACCESS_TOKEN_COOKIE) ||
+    hasCookie(cookieHeader, AUTH_REFRESH_TOKEN_COOKIE)
+  );
 }

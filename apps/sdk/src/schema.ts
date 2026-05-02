@@ -20,6 +20,10 @@ export const userSchema = z.strictObject({
   lastSignInAt: z.string().nullable(),
 });
 
+export const signOutResultSchema = z.strictObject({
+  signedOut: z.boolean(),
+});
+
 export const apiKeySchema = z.strictObject({
   id: nonEmptyStringSchema,
   userId: nonEmptyStringSchema,
@@ -41,6 +45,11 @@ export const createApiKeyResultSchema = z.strictObject({
 
 export const revokeApiKeyInputSchema = z.strictObject({
   apiKeyId: nonEmptyStringSchema,
+});
+
+export const renameApiKeyInputSchema = z.strictObject({
+  apiKeyId: nonEmptyStringSchema,
+  name: z.string().trim().min(1),
 });
 
 export const mcpServerToolConfigSchema = z.strictObject({
@@ -178,6 +187,30 @@ export const agentRunRecordSchema = z.strictObject({
   lastMessage: z.string().optional(),
 });
 
+export const threadEventTypeSchema = z.enum([
+  "thread.started",
+  "turn.started",
+  "turn.completed",
+  "turn.failed",
+  "item.started",
+  "item.updated",
+  "item.completed",
+  "error",
+]);
+
+export const threadItemTypeSchema = z.enum([
+  "agent_message",
+  "reasoning",
+  "command_execution",
+  "file_change",
+  "mcp_tool_call",
+  "web_search",
+  "todo_list",
+  "error",
+]);
+
+const threadItemStatusSchema = z.enum(["in_progress", "completed", "failed"]);
+
 const usageSchema = z.strictObject({
   input_tokens: z.number().finite(),
   cached_input_tokens: z.number().finite(),
@@ -309,8 +342,30 @@ export const threadEventsPayloadSchema = z.union([
   z.array(threadEventSchema),
 ]);
 
+export const agentRunEventRecordSchema = z.strictObject({
+  id: z.number().int().nonnegative(),
+  runId: nonEmptyStringSchema,
+  eventType: threadEventTypeSchema,
+  itemId: nonEmptyStringSchema.optional(),
+  itemStatus: threadItemStatusSchema.optional(),
+  itemType: threadItemTypeSchema.optional(),
+  event: threadEventSchema,
+  createdAt: nonEmptyStringSchema,
+});
+
 export const runIdInputSchema = z.strictObject({
   runId: nonEmptyStringSchema,
+});
+
+export const listRunsInputSchema = z.strictObject({
+  limit: z.number().int().min(1).max(100).default(50),
+});
+
+export const runEventRecordsInputSchema = z.strictObject({
+  afterEventId: z.number().int().min(0).optional(),
+  eventType: threadEventTypeSchema.optional(),
+  limit: z.number().int().min(1).max(500).default(100),
+  runId: nonEmptyStringSchema.optional(),
 });
 
 export const runnerRunConfigSchema = z.strictObject({

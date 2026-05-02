@@ -1,0 +1,509 @@
+import { API_KEY_PREFIX, AUTH_ACCESS_TOKEN_COOKIE } from "@mesh0/sdk/auth";
+import { spawn } from "node:child_process";
+import { createServer } from "node:net";
+import { chromium, type Browser, type Page } from "playwright";
+import { startLocalDashboardApi } from "../test/support/local-api";
+
+await main();
+
+async function main() {
+  const dashboardApi = await startLocalDashboardApi();
+  const webPort = await findFreePort();
+  const webUrl = `http://127.0.0.1:${webPort}`;
+  const webServer = startWebServer({
+    apiUrl: dashboardApi.apiUrl,
+    port: webPort,
+  });
+  let browser: Browser | undefined;
+
+  try {
+    await waitForReachable(webUrl, "web");
+    browser = await chromium.launch({ headless: true });
+    const context = await browser.newContext({
+      ignoreHTTPSErrors: true,
+      viewport: { height: 920, width: 1360 },
+    });
+    await context.grantPermissions(["clipboard-read", "clipboard-write"], {
+      origin: webUrl,
+    });
+    await context.addCookies([
+      {
+        httpOnly: true,
+        name: AUTH_ACCESS_TOKEN_COOKIE,
+        sameSite: "Lax",
+        secure: false,
+        url: webUrl,
+        value: dashboardApi.accessToken,
+      },
+    ]);
+    const page = await context.newPage();
+
+    await testRunsPage(page, webUrl, dashboardApi.seed.completedRunId);
+    await testArtifactsPage(page, webUrl, {
+      artifactPath: dashboardApi.seed.artifactPath,
+      completedRunId: dashboardApi.seed.completedRunId,
+    });
+    await testObservabilityPage(page, webUrl, {
+      completedRunId: dashboardApi.seed.completedRunId,
+      eventType: dashboardApi.seed.eventType,
+    });
+    await testApiKeysPage(page, webUrl);
+    await testAccountMenu(page, webUrl, dashboardApi.seed.userEmail);
+
+    console.log("dashboard-e2e-ok");
+  } catch (error) {
+    console.error(webServer.logs.join("\n"));
+    throw error;
+  } finally {
+    if (browser !== undefined) {
+      await browser.close();
+    }
+    webServer.stop();
+    dashboardApi.close();
+  }
+}
+
+async function testRunsPage(
+  page: Page,
+  webUrl: string,
+  completedRunId: string,
+) {
+  await page.goto(new URL("/runs", webUrl).toString(), {
+    waitUntil: "domcontentloaded",
+  });
+  await page.getByRole("heading", { name: "Agent runs" }).waitFor();
+  assertDefaultSearch(page.url(), {
+    page: "1",
+    status: "all",
+  });
+  assert(
+    (await page
+      .getByRole("navigation", { name: "Primary" })
+      .getByText("Account")
+      .count()) === 0,
+    "dashboard nav still includes Account",
+  );
+  await page.getByText(completedRunId).first().waitFor();
+  await page.getByRole("button", { name: "Refresh" }).click();
+  await page.getByText("Runs refreshed").waitFor();
+  await page.getByText("32 runs loaded").waitFor();
+  await page.getByRole("button", { name: "Next page" }).click();
+  await page.waitForURL((url) => url.searchParams.get("page") === "2");
+  await page.getByRole("button", { name: "Previous page" }).click();
+  await page.waitForURL((url) => url.searchParams.get("page") === "1");
+
+  await page.getByRole("button", { name: "Completed" }).click();
+  await page.getByText(completedRunId).first().waitFor();
+  const completedRunRow = page
+    .locator("tbody tr")
+    .filter({ hasText: completedRunId })
+    .first();
+  await completedRunRow.getByRole("button", { name: "Copy run ID" }).click();
+  const copiedTableRunId = await page.evaluate(() =>
+    navigator.clipboard.readText(),
+  );
+  assert(copiedTableRunId === completedRunId, "run table copy failed");
+  assert(
+    new URL(page.url()).searchParams.get("runId") === null,
+    "copying a run row value opened the detail dialog",
+  );
+  await completedRunRow.click();
+  await page.waitForURL((url) => url.searchParams.get("runId") !== null);
+  assert(
+    new URL(page.url()).searchParams.get("runId") === completedRunId,
+    "run detail did not write run id to the URL",
+  );
+  await page.getByRole("heading", { name: "Run detail" }).waitFor();
+  const runDialog = page.getByRole("dialog");
+  await runDialog
+    .getByRole("button", { exact: true, name: "Copy run ID" })
+    .click();
+  const copiedRunId = await page.evaluate(() => navigator.clipboard.readText());
+  assert(copiedRunId === completedRunId, "run id copy failed");
+  await runDialog.getByRole("button", { name: "Copy Status" }).click();
+  const copiedRunStatus = await page.evaluate(() =>
+    navigator.clipboard.readText(),
+  );
+  assert(copiedRunStatus === "completed", "run detail status copy failed");
+  await runDialog.getByRole("button", { name: "Copy prompt" }).click();
+  const copiedRunPrompt = await page.evaluate(() =>
+    navigator.clipboard.readText(),
+  );
+  assert(
+    copiedRunPrompt === "Completed dashboard run with artifact",
+    "run prompt copy failed",
+  );
+  await runDialog.getByRole("button", { name: "Copy last message" }).click();
+  const copiedRunLastMessage = await page.evaluate(() =>
+    navigator.clipboard.readText(),
+  );
+  assert(
+    copiedRunLastMessage === "dashboard completed ok",
+    "run last message copy failed",
+  );
+
+  await page.getByRole("link", { name: "Events" }).click();
+  await page.waitForURL((url) => url.pathname === "/observability");
+  assert(
+    new URL(page.url()).searchParams.get("runId") === completedRunId,
+    "runs to observability link did not carry run id",
+  );
+  assertDefaultSearch(page.url(), {
+    eventType: "all",
+    page: "1",
+  });
+
+  await page.goto(new URL("/runs?page=1&status=missing", webUrl).toString(), {
+    waitUntil: "domcontentloaded",
+  });
+  await page.waitForURL(
+    (url) =>
+      url.pathname === "/runs" &&
+      url.searchParams.get("page") === "1" &&
+      url.searchParams.get("status") === "all",
+  );
+}
+
+async function testArtifactsPage(
+  page: Page,
+  webUrl: string,
+  seed: { artifactPath: string; completedRunId: string },
+) {
+  const url = new URL("/artifacts", webUrl);
+  url.searchParams.set("page", "1");
+  url.searchParams.set("runId", seed.completedRunId);
+  await page.goto(url.toString(), { waitUntil: "domcontentloaded" });
+  await page.getByRole("heading", { name: "Run artifacts" }).waitFor();
+  assertDefaultSearch(page.url(), {
+    page: "1",
+    runId: seed.completedRunId,
+  });
+  await page.getByLabel("Search by run ID").waitFor();
+  await page.getByRole("button", { name: "Refresh" }).click();
+  await page.getByText("Artifacts refreshed").waitFor();
+  const artifactRow = page
+    .locator("tbody tr")
+    .filter({ hasText: seed.artifactPath })
+    .first();
+  await artifactRow.getByRole("button", { name: "Copy run ID" }).click();
+  const copiedArtifactRunId = await page.evaluate(() =>
+    navigator.clipboard.readText(),
+  );
+  assert(
+    copiedArtifactRunId === seed.completedRunId,
+    "artifact table run id copy failed",
+  );
+  await artifactRow.click();
+  await page.waitForURL(
+    (nextUrl) => nextUrl.searchParams.get("artifactId") !== null,
+  );
+  assertDefaultSearch(page.url(), { page: "1" });
+  await page.getByRole("heading", { name: "Artifact detail" }).waitFor();
+  const artifactDialog = page.getByRole("dialog");
+  await artifactDialog.getByRole("button", { name: "Copy Path" }).click();
+  const copiedArtifactDetailPath = await page.evaluate(() =>
+    navigator.clipboard.readText(),
+  );
+  assert(
+    copiedArtifactDetailPath === seed.artifactPath,
+    "artifact detail copy failed",
+  );
+
+  const downloadHref = await page
+    .getByRole("link", { name: "Download" })
+    .getAttribute("href");
+  assert(downloadHref !== null, "artifact download link missing href");
+  const response = await page.request.get(downloadHref);
+  assert(response.ok(), `artifact download failed: ${response.status()}`);
+  assert(
+    (await response.text()).includes("dashboard artifact ok"),
+    "artifact download returned unexpected content",
+  );
+
+  await page.goto(new URL("/artifacts?page=0", webUrl).toString(), {
+    waitUntil: "domcontentloaded",
+  });
+  await page.waitForURL(
+    (nextUrl) =>
+      nextUrl.pathname === "/artifacts" &&
+      nextUrl.searchParams.get("page") === "1",
+  );
+}
+
+async function testObservabilityPage(
+  page: Page,
+  webUrl: string,
+  seed: { completedRunId: string; eventType: string },
+) {
+  const url = new URL("/observability", webUrl);
+  url.searchParams.set("eventType", "all");
+  url.searchParams.set("page", "1");
+  url.searchParams.set("runId", seed.completedRunId);
+  await page.goto(url.toString(), { waitUntil: "domcontentloaded" });
+  await page.getByRole("heading", { name: "Agent observability" }).waitFor();
+  assertDefaultSearch(page.url(), {
+    eventType: "all",
+    page: "1",
+    runId: seed.completedRunId,
+  });
+  await page.getByRole("button", { name: "Refresh" }).click();
+  await page.getByText("Events refreshed").waitFor();
+  await page.getByLabel("Filter by event type").click();
+  await page
+    .locator('[data-slot="select-item"]')
+    .filter({ hasText: seed.eventType })
+    .click();
+  await page.waitForURL(
+    (nextUrl) => nextUrl.searchParams.get("eventType") === seed.eventType,
+  );
+  const eventRow = page
+    .locator("tbody tr")
+    .filter({ hasText: seed.eventType })
+    .first();
+  await eventRow.getByRole("button", { name: "Copy run ID" }).click();
+  const copiedEventRunIdFromTable = await page.evaluate(() =>
+    navigator.clipboard.readText(),
+  );
+  assert(
+    copiedEventRunIdFromTable === seed.completedRunId,
+    "event table run id copy failed",
+  );
+  await eventRow.click();
+  await page.waitForURL(
+    (nextUrl) => nextUrl.searchParams.get("eventId") !== null,
+  );
+  await page.getByRole("heading", { name: "Event detail" }).waitFor();
+  await page.getByText("msg_dashboard_completed").first().waitFor();
+  const eventDialog = page.getByRole("dialog");
+  await eventDialog.getByRole("button", { name: "Copy Run ID" }).click();
+  const copiedEventRunId = await page.evaluate(() =>
+    navigator.clipboard.readText(),
+  );
+  assert(copiedEventRunId === seed.completedRunId, "event detail copy failed");
+  await eventDialog.getByRole("button", { name: "Copy event payload" }).click();
+  const copiedEventPayload = await page.evaluate(() =>
+    navigator.clipboard.readText(),
+  );
+  assert(
+    copiedEventPayload.includes("msg_dashboard_completed"),
+    "event payload copy failed",
+  );
+
+  await page.goto(
+    new URL("/observability?eventType=nope&page=1", webUrl).toString(),
+    { waitUntil: "domcontentloaded" },
+  );
+  await page.waitForURL(
+    (nextUrl) =>
+      nextUrl.pathname === "/observability" &&
+      nextUrl.searchParams.get("eventType") === "all" &&
+      nextUrl.searchParams.get("page") === "1",
+  );
+}
+
+async function testApiKeysPage(page: Page, webUrl: string) {
+  const keyName = "E2E dashboard key";
+  const renamedKeyName = "Renamed E2E dashboard key";
+  await page.goto(new URL("/keys", webUrl).toString(), {
+    waitUntil: "domcontentloaded",
+  });
+  await page.getByRole("heading", { name: "API keys" }).waitFor();
+  assertDefaultSearch(page.url(), { page: "1" });
+  await page.getByText("Dashboard active key").first().waitFor();
+  await page.getByText("Dashboard revoked key").first().waitFor();
+  await page.getByRole("columnheader", { name: "API Key" }).waitFor();
+  await page.getByRole("button", { name: "Create key" }).click();
+  const createKeyDialog = page.getByRole("dialog");
+  await createKeyDialog.getByLabel("Name").fill(keyName);
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Create key" })
+    .click();
+
+  const keyInput = page.getByLabel("New key");
+  await keyInput.waitFor();
+  const createdKey = await keyInput.inputValue();
+  assert(
+    createdKey.startsWith(API_KEY_PREFIX),
+    "created API key format is invalid",
+  );
+  await page.getByText("API key created").waitFor();
+  await page.getByRole("button", { name: "Copy API key" }).click();
+  const copiedApiKey = await page.evaluate(() =>
+    navigator.clipboard.readText(),
+  );
+  assert(copiedApiKey === createdKey, "api key copy failed");
+  await page.keyboard.press("Escape");
+
+  await page.getByText(keyName).first().waitFor();
+  const apiKeyRow = page.locator("tbody tr").filter({ hasText: keyName });
+  await apiKeyRow.first().click();
+  await page.waitForURL(
+    (nextUrl) => nextUrl.searchParams.get("keyId") !== null,
+  );
+  const keyDialog = page.getByRole("dialog");
+  const activeElementLabel = await page.evaluate(() =>
+    document.activeElement?.getAttribute("aria-label"),
+  );
+  assert(
+    activeElementLabel !== "API key name",
+    "key detail name input was auto focused",
+  );
+  await keyDialog.getByLabel("API key name").fill(renamedKeyName);
+  await keyDialog.getByRole("button", { name: "Rename key" }).click();
+  await page.getByText("API key renamed").waitFor();
+  await page.keyboard.press("Escape");
+  await page.waitForURL(
+    (nextUrl) => nextUrl.searchParams.get("keyId") === null,
+  );
+  const renamedApiKeyRow = page
+    .locator("tbody tr")
+    .filter({ hasText: renamedKeyName })
+    .first();
+  await renamedApiKeyRow.waitFor();
+  await renamedApiKeyRow.click();
+  await page.waitForURL(
+    (nextUrl) => nextUrl.searchParams.get("keyId") !== null,
+  );
+  const renamedKeyDialog = page.getByRole("dialog");
+  await renamedKeyDialog.getByRole("button", { name: "Copy Name" }).click();
+  const copiedRenamedKeyName = await page.evaluate(() =>
+    navigator.clipboard.readText(),
+  );
+  assert(copiedRenamedKeyName === renamedKeyName, "API key detail copy failed");
+  await renamedKeyDialog
+    .getByRole("button", { exact: true, name: "Revoke key" })
+    .click();
+  const revokeAlert = page.getByRole("alertdialog");
+  await revokeAlert.getByRole("button", { name: "Revoke key" }).click();
+  await page.getByText("API key revoked").waitFor();
+  await revokeAlert.waitFor({ state: "hidden" });
+  await page
+    .locator("tbody tr")
+    .filter({ hasText: renamedKeyName })
+    .filter({ hasText: "revoked" })
+    .waitFor();
+
+  await page.goto(new URL("/keys?keyId=bad&page=1", webUrl).toString(), {
+    waitUntil: "domcontentloaded",
+  });
+  await page.waitForURL(
+    (nextUrl) =>
+      nextUrl.pathname === "/keys" && nextUrl.searchParams.get("page") === "1",
+  );
+}
+
+async function testAccountMenu(page: Page, webUrl: string, userEmail: string) {
+  await page.goto(new URL("/runs", webUrl).toString(), {
+    waitUntil: "domcontentloaded",
+  });
+  await page.getByRole("heading", { name: "Agent runs" }).waitFor();
+  await page.getByText("32 runs loaded").waitFor();
+  await page.getByRole("button", { name: "Account menu" }).click();
+  const accountMenu = page.getByRole("menu");
+  await accountMenu.getByText("Dashboard Test").waitFor();
+  await accountMenu.getByText(userEmail).waitFor();
+  await page.getByRole("menuitem", { name: "Sign out" }).click();
+  await page
+    .getByRole("alertdialog")
+    .getByRole("button", { name: "Sign out" })
+    .click();
+  await Promise.race([
+    page
+      .waitForURL((url) => url.pathname === "/", { timeout: 5_000 })
+      .catch(() => undefined),
+    page.waitForTimeout(5_000),
+  ]);
+  assert(
+    new URL(page.url()).pathname === "/",
+    `sign out did not redirect: ${await page.locator("body").innerText()}`,
+  );
+
+  await page.goto(new URL("/runs", webUrl).toString(), {
+    waitUntil: "domcontentloaded",
+  });
+  await page.waitForURL((url) => url.pathname === "/");
+}
+
+function startWebServer({ apiUrl, port }: { apiUrl: string; port: number }) {
+  const child = spawn(
+    "bun",
+    [
+      "--cwd",
+      "apps/web",
+      "vite",
+      "dev",
+      "--host",
+      "127.0.0.1",
+      "--port",
+      String(port),
+    ],
+    {
+      cwd: new URL("..", import.meta.url).pathname,
+      env: {
+        ...process.env,
+        VITE_MESH0_API_URL: apiUrl,
+      },
+      stdio: "pipe",
+    },
+  );
+  const logs: string[] = [];
+  child.stdout.on("data", (chunk) => logs.push(String(chunk)));
+  child.stderr.on("data", (chunk) => logs.push(String(chunk)));
+
+  return {
+    stop() {
+      child.kill();
+    },
+    logs,
+  };
+}
+
+async function findFreePort() {
+  return new Promise<number>((resolve, reject) => {
+    const server = createServer();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      if (typeof address !== "object" || address === null) {
+        reject(new Error("Unable to resolve free port"));
+        return;
+      }
+
+      const { port } = address;
+      server.close(() => resolve(port));
+    });
+  });
+}
+
+async function waitForReachable(url: string, label: string) {
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(url);
+      if (response.status < 500) {
+        return;
+      }
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  }
+
+  throw new Error(`${label} did not become reachable at ${url}`);
+}
+
+function assert(condition: unknown, message: string): asserts condition {
+  if (!condition) {
+    throw new Error(message);
+  }
+}
+
+function assertDefaultSearch(url: string, expected: Record<string, string>) {
+  const searchParams = new URL(url).searchParams;
+  for (const [key, value] of Object.entries(expected)) {
+    assert(
+      searchParams.get(key) === value,
+      `expected ${key}=${value}, got ${searchParams.get(key)}`,
+    );
+  }
+}

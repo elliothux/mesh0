@@ -36,12 +36,16 @@ export default {
     const context = createWorkerContext(request, worker, appEnv);
     const authResponse = await handleAuthRequest(request, context);
     if (authResponse !== undefined) {
-      return authResponse;
+      return withCors(authResponse, request, context.env);
     }
 
     const storageResponse = await handleRunStorageRequest(request, context);
     if (storageResponse !== undefined) {
-      return withCors(storageResponse, request, context.env);
+      return withCors(
+        mergeResponseHeaders(storageResponse, context.responseHeaders),
+        request,
+        context.env,
+      );
     }
 
     const result = await rpcHandler.handle(request, {
@@ -50,7 +54,11 @@ export default {
     });
 
     if (result.matched) {
-      return withCors(result.response, request, context.env);
+      return withCors(
+        mergeResponseHeaders(result.response, context.responseHeaders),
+        request,
+        context.env,
+      );
     }
 
     return withCors(
@@ -86,7 +94,15 @@ function createWorkerContext(
     sandbox,
   });
 
-  return { auth, db, env, request, services, storage };
+  return {
+    auth,
+    db,
+    env,
+    request,
+    responseHeaders: new Headers(),
+    services,
+    storage,
+  };
 }
 
 async function handleAuthRequest(request: Request, context: Context) {
@@ -150,4 +166,21 @@ async function handleAuthRequest(request: Request, context: Context) {
   });
 
   return response;
+}
+
+function mergeResponseHeaders(response: Response, headers: Headers) {
+  if ([...headers].length === 0) {
+    return response;
+  }
+
+  const mergedHeaders = new Headers(response.headers);
+  for (const [key, value] of headers) {
+    mergedHeaders.append(key, value);
+  }
+
+  return new Response(response.body, {
+    headers: mergedHeaders,
+    status: response.status,
+    statusText: response.statusText,
+  });
 }

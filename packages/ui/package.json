@@ -1,5 +1,5 @@
 {
-  "name": "@lynx/ui",
+  "name": "@mesh0/ui",
   "type": "module",
   "exports": {
     "./lib/*": "./src/lib/*.ts",
@@ -7,7 +7,7 @@
     "./*": "./src/components/*.tsx"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
-    "fix:imports": "bun run ./scripts/fix-shadcn-imports.ts"
+    "fix:imports": "bun run ./scripts/fix-shadcn-imports.ts",
+    "typecheck": "tsc --noEmit"
   }
 }

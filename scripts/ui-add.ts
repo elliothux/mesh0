@@ -32,7 +32,7 @@ function run(command: string, args: string[]) {
 }
 
 async function main() {
-  await run("bunx", ["--bun", "shadcn@latest", "add", ...components]);
+  await run("bunx", ["--bun", "shadcn", "add", ...components]);
   await run("bun", ["run", "fix:imports"]);
   await run("bun", ["run", "typecheck"]);
 }

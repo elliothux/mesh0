@@ -1,19 +1,26 @@
 import type { RunnerSandbox } from "@mesh0/adapters";
 import type { Db } from "@mesh0/db";
 import { agentRunEvents, agentRuns } from "@mesh0/db/schema";
-import type { AgentRun } from "@mesh0/db/types";
-import { agentRunRecordSchema, threadEventSchema } from "@mesh0/sdk/schema";
+import type { AgentRun, AgentRunEvent } from "@mesh0/db/types";
+import {
+  agentRunEventRecordSchema,
+  agentRunRecordSchema,
+  threadEventSchema,
+} from "@mesh0/sdk/schema";
 import type {
+  AgentRunEventRecord,
   AgentRunInput,
   AgentRunRecord,
   AppendRunEventsInput,
   AppendRunEventsResult,
   CompleteRunInput,
+  ListRunsInput,
+  RunEventRecordsInput,
   RunIdInput,
   RunnerRunConfig,
 } from "@mesh0/sdk/types";
 import type { ThreadEvent } from "@openai/codex-sdk";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, gt } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { constantTimeEqual, hashSecret } from "./secrets";
 import { resolveSystemPrompt } from "./system-prompt";
@@ -66,16 +73,25 @@ export class RunService {
     return this.#startExecution(record, runnerToken);
   }
 
-  async getForUser({
+  async list({
+    limit,
+    userId,
+  }: ListRunsInput & { userId: string }): Promise<AgentRunRecord[]> {
+    const runs = await this.#db
+      .select()
+      .from(agentRuns)
+      .where(eq(agentRuns.userId, userId))
+      .orderBy(desc(agentRuns.createdAt))
+      .limit(limit);
+
+    return runs.map(parseRun);
+  }
+
+  async get({
     runId,
     userId,
   }: RunIdInput & { userId: string }): Promise<AgentRunRecord> {
-    const run = await this.#getStoredRun(runId);
-    if (run.userId !== userId) {
-      throw new RunNotFoundError();
-    }
-
-    return run;
+    return this.#getScopedRun({ runId, userId });
   }
 
   async getInput({ runId }: RunIdInput): Promise<RunnerRunConfig> {
@@ -93,12 +109,39 @@ export class RunService {
     }
   }
 
-  async getEventsForUser({
+  async events({
     runId,
     userId,
   }: RunIdInput & { userId: string }): Promise<ThreadEvent[]> {
-    await this.getForUser({ runId, userId });
+    await this.#getScopedRun({ runId, userId });
     return this.#getStoredRunEvents(runId);
+  }
+
+  async eventRecords({
+    afterEventId,
+    eventType,
+    limit,
+    runId,
+    userId,
+  }: RunEventRecordsInput & { userId: string }): Promise<
+    AgentRunEventRecord[]
+  > {
+    if (runId === undefined) {
+      return this.#getUserRunEventRecords({
+        afterEventId,
+        eventType,
+        limit,
+        userId,
+      });
+    }
+
+    await this.#getScopedRun({ runId, userId });
+    return this.#getStoredRunEventRecords({
+      afterEventId,
+      eventType,
+      limit,
+      runId,
+    });
   }
 
   async appendEvents({
@@ -109,8 +152,13 @@ export class RunService {
     const eventList = Array.isArray(events) ? events : [events];
 
     for (const event of eventList) {
+      const envelope = eventEnvelope(event);
       await this.#db.insert(agentRunEvents).values({
         createdAt: new Date().toISOString(),
+        eventType: envelope.eventType,
+        itemId: envelope.itemId,
+        itemStatus: envelope.itemStatus,
+        itemType: envelope.itemType,
         event: JSON.stringify(event),
         runId,
       });
@@ -161,6 +209,18 @@ export class RunService {
     return parseRun(await this.#getStoredRunRow(runId));
   }
 
+  async #getScopedRun({
+    runId,
+    userId,
+  }: RunIdInput & { userId: string }): Promise<AgentRunRecord> {
+    const run = await this.#getStoredRun(runId);
+    if (run.userId !== userId) {
+      throw new RunNotFoundError();
+    }
+
+    return run;
+  }
+
   async #getStoredRunRow(runId: string) {
     const [run] = await this.#db
       .select()
@@ -184,6 +244,60 @@ export class RunService {
     return threadEventSchema
       .array()
       .parse(events.map(({ event }) => JSON.parse(event)));
+  }
+
+  async #getStoredRunEventRecords({
+    afterEventId,
+    eventType,
+    limit,
+    runId,
+  }: Required<Pick<RunEventRecordsInput, "runId">> &
+    Omit<RunEventRecordsInput, "runId">) {
+    const events = await this.#db
+      .select()
+      .from(agentRunEvents)
+      .where(
+        and(
+          eq(agentRunEvents.runId, runId),
+          afterEventId === undefined
+            ? undefined
+            : gt(agentRunEvents.id, afterEventId),
+          eventType === undefined
+            ? undefined
+            : eq(agentRunEvents.eventType, eventType),
+        ),
+      )
+      .orderBy(asc(agentRunEvents.id))
+      .limit(limit);
+
+    return events.map(parseRunEventRecord);
+  }
+
+  async #getUserRunEventRecords({
+    afterEventId,
+    eventType,
+    limit,
+    userId,
+  }: Omit<RunEventRecordsInput, "runId"> & { userId: string }) {
+    const events = await this.#db
+      .select({ event: agentRunEvents })
+      .from(agentRunEvents)
+      .innerJoin(agentRuns, eq(agentRunEvents.runId, agentRuns.id))
+      .where(
+        and(
+          eq(agentRuns.userId, userId),
+          afterEventId === undefined
+            ? undefined
+            : gt(agentRunEvents.id, afterEventId),
+          eventType === undefined
+            ? undefined
+            : eq(agentRunEvents.eventType, eventType),
+        ),
+      )
+      .orderBy(desc(agentRunEvents.id))
+      .limit(limit);
+
+    return events.map(({ event }) => parseRunEventRecord(event));
   }
 
   async #startExecution(record: AgentRunRecord, runnerToken: string) {
@@ -255,6 +369,43 @@ function parseRun(run: AgentRun) {
     status: run.status,
     userId: run.userId,
   });
+}
+
+function parseRunEventRecord(row: AgentRunEvent) {
+  const event = threadEventSchema.parse(JSON.parse(row.event));
+
+  return agentRunEventRecordSchema.parse({
+    createdAt: row.createdAt,
+    event,
+    eventType: row.eventType,
+    id: row.id,
+    itemId: row.itemId ?? undefined,
+    itemStatus: row.itemStatus ?? undefined,
+    itemType: row.itemType ?? undefined,
+    runId: row.runId,
+  });
+}
+
+function eventEnvelope(event: ThreadEvent) {
+  if (
+    event.type === "item.started" ||
+    event.type === "item.updated" ||
+    event.type === "item.completed"
+  ) {
+    return {
+      eventType: event.type,
+      itemId: event.item.id,
+      itemStatus: "status" in event.item ? event.item.status : null,
+      itemType: event.item.type,
+    };
+  }
+
+  return {
+    eventType: event.type,
+    itemId: null,
+    itemStatus: null,
+    itemType: null,
+  };
 }
 
 function formatExecutionError(error: unknown) {

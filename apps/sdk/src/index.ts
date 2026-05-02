@@ -4,14 +4,17 @@ import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
 import { buildRunStorageUri } from "./artifacts";
 import {
+  agentRunEventRecordSchema,
   agentRunRecordSchema,
   apiKeySchema,
   createApiKeyResultSchema,
+  signOutResultSchema,
   threadEventSchema,
   threadEventsPayloadSchema,
   userSchema,
 } from "./schema";
 import type {
+  AgentRunEventRecord,
   AgentRunInput,
   AgentRunRecord,
   AgentRunStatus,
@@ -20,6 +23,7 @@ import type {
   DownloadRunArtifactInput,
   McpServers,
   OpenAiEnv,
+  RenameApiKeyInput,
   RevokeApiKeyInput,
   SkillRef,
   WorkspaceRef,
@@ -34,6 +38,16 @@ export interface Mesh0ClientOptions {
 export interface AgentRunWaitOptions {
   intervalMs?: number;
   timeoutMs?: number;
+}
+
+export interface ListRunsOptions {
+  limit?: number;
+}
+
+export interface AgentRunEventRecordsOptions {
+  afterEventId?: number;
+  eventType?: AgentRunEventRecord["eventType"];
+  limit?: number;
 }
 
 export class Mesh0Client {
@@ -72,6 +86,10 @@ export class Mesh0Client {
     return userSchema.parse(await this.#rpc.user.me());
   }
 
+  async signOut() {
+    return signOutResultSchema.parse(await this.#rpc.user.signOut());
+  }
+
   async listApiKeys() {
     return apiKeySchema.array().parse(await this.#rpc.apiKeys.list());
   }
@@ -86,8 +104,18 @@ export class Mesh0Client {
     return apiKeySchema.parse(await this.#rpc.apiKeys.revoke(input));
   }
 
+  async renameApiKey(input: RenameApiKeyInput) {
+    return apiKeySchema.parse(await this.#rpc.apiKeys.rename(input));
+  }
+
   async getRun(runId: string) {
     return agentRunRecordSchema.parse(await this.#rpc.runs.get({ runId }));
+  }
+
+  async listRuns({ limit = 50 }: ListRunsOptions = {}) {
+    return agentRunRecordSchema
+      .array()
+      .parse(await this.#rpc.runs.list({ limit }));
   }
 
   async *events(runId: string): AsyncIterable<ThreadEvent> {
@@ -98,6 +126,20 @@ export class Mesh0Client {
     for (const event of eventList) {
       yield threadEventSchema.parse(event);
     }
+  }
+
+  async eventRecords(
+    runId: string,
+    { afterEventId, eventType, limit = 100 }: AgentRunEventRecordsOptions = {},
+  ): Promise<AgentRunEventRecord[]> {
+    return agentRunEventRecordSchema.array().parse(
+      await this.#rpc.runs.eventRecords({
+        afterEventId,
+        eventType,
+        limit,
+        runId,
+      }),
+    );
   }
 
   async createRun(input: AgentRunInput) {
@@ -207,6 +249,10 @@ export class AgentRunHandle {
 
   events() {
     return this.#client.events(this.id);
+  }
+
+  eventRecords(options?: AgentRunEventRecordsOptions) {
+    return this.#client.eventRecords(this.id, options);
   }
 
   result() {

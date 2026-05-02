@@ -5,14 +5,24 @@ import type { RouterClient } from "@orpc/server";
 import { createTanstackQueryUtils } from "@orpc/tanstack-query";
 import { QueryClient } from "@tanstack/react-query";
 import { env } from "./env";
+import { appendSetCookieHeaders } from "./headers";
 
 type ApiClientContext = {
   cookie?: string;
+  responseHeaders?: Headers;
 };
 
 export const apiUrl = env.VITE_MESH0_API_URL.replace(/\/$/, "");
 const link = new RPCLink<ApiClientContext>({
-  fetch: (request, init) => fetch(request, { ...init, credentials: "include" }),
+  fetch: async (request, init, options) => {
+    const response = await fetch(request, { ...init, credentials: "include" });
+    const { responseHeaders } = options.context;
+    if (responseHeaders !== undefined) {
+      appendSetCookieHeaders(response.headers, responseHeaders);
+    }
+
+    return response;
+  },
   headers: ({ context }) => {
     const headers = new Headers();
     if (context.cookie !== undefined) {
