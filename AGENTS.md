@@ -45,6 +45,9 @@ Rules below are invariants. Violating any of these creates bugs or maintenance r
 - Never run destructive git operations unless explicitly requested by the user.
 - Keep changes scoped to the user request; avoid unrelated edits.
 - If schema or infrastructure commands are risky, stop and ask before running.
+- All application API behavior must live in `apps/api`. The web app must call API-owned routes/procedures instead of implementing API logic locally.
+- `apps/web` server functions are only for thin call-through/transport needs such as TanStack Query prefetching, redirect glue, cookie transfer, or adapting request context to API calls. Do not put business logic, auth decisions, persistence rules, or data ownership in web server functions.
+- Prefer direct client-side oRPC calls from `apps/web` when no server-only request context is required. Use a web server function only when the behavior explicitly needs server request/response access or SSR prefetch.
 
 ### Data & Persistence
 

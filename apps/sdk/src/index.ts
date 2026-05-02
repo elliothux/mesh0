@@ -5,17 +5,22 @@ import { RPCLink } from "@orpc/client/fetch";
 import { buildRunStorageUri } from "./artifacts";
 import {
   agentRunRecordSchema,
+  apiKeySchema,
+  createApiKeyResultSchema,
   threadEventSchema,
   threadEventsPayloadSchema,
+  userSchema,
 } from "./schema";
 import type {
   AgentRunInput,
   AgentRunRecord,
   AgentRunStatus,
   AgentSystemPrompt,
+  CreateApiKeyInput,
   DownloadRunArtifactInput,
   McpServers,
   OpenAiEnv,
+  RevokeApiKeyInput,
   SkillRef,
   WorkspaceRef,
 } from "./types";
@@ -42,7 +47,12 @@ export class Mesh0Client {
       /\/$/,
       "",
     );
-    this.#apiKey = options.apiKey;
+    const apiKey = options.apiKey?.trim();
+    if (apiKey !== undefined && apiKey.length === 0) {
+      throw new Error("apiKey is required when provided");
+    }
+
+    this.#apiKey = apiKey;
     this.#apiUrl = apiUrl;
     this.#fetch = options.fetch ?? fetch;
 
@@ -56,6 +66,24 @@ export class Mesh0Client {
 
   agent() {
     return new AgentBuilder(this);
+  }
+
+  async me() {
+    return userSchema.parse(await this.#rpc.user.me());
+  }
+
+  async listApiKeys() {
+    return apiKeySchema.array().parse(await this.#rpc.apiKeys.list());
+  }
+
+  async createApiKey(input: CreateApiKeyInput) {
+    return createApiKeyResultSchema.parse(
+      await this.#rpc.apiKeys.create(input),
+    );
+  }
+
+  async revokeApiKey(input: RevokeApiKeyInput) {
+    return apiKeySchema.parse(await this.#rpc.apiKeys.revoke(input));
   }
 
   async getRun(runId: string) {
@@ -97,7 +125,6 @@ export class Mesh0Client {
   #headers() {
     const headers = new Headers();
     if (this.#apiKey !== undefined) {
-      // TODO: Replace this with user/auth scoped credentials.
       headers.set("Authorization", `Bearer ${this.#apiKey}`);
     }
     return headers;

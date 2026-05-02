@@ -13,64 +13,89 @@ import {
 } from "@mesh0/sdk/schema";
 import { RunNotFoundError } from "@mesh0/services/run";
 import { ORPCError } from "@orpc/server";
-import { procedure } from "../context";
+import {
+  authenticateContextRunner,
+  procedure,
+  protectedProcedure,
+} from "../context";
 
 export const runRouter = {
   appendEvents: procedure
     .input(appendRunEventsInputSchema)
     .output(appendRunEventsResultSchema)
     .handler(({ context, input }) => {
-      return mapRunError(() => context.services.run.appendEvents(input));
+      return mapRunError(async () => {
+        await authenticateContextRunner(context, input.runId);
+        return context.services.run.appendEvents(input);
+      });
     }),
 
   complete: procedure
     .input(completeRunInputSchema)
     .output(agentRunRecordSchema)
     .handler(({ context, input }) => {
-      return mapRunError(() => context.services.run.complete(input));
+      return mapRunError(async () => {
+        await authenticateContextRunner(context, input.runId);
+        return context.services.run.complete(input);
+      });
     }),
 
-  create: procedure
+  create: protectedProcedure
     .input(agentRunInputSchema)
     .output(agentRunRecordSchema)
     .handler(({ context, input }) => {
-      return context.services.run.create(input);
+      return context.services.run.create(context.user.id, input);
     }),
 
-  events: procedure
+  events: protectedProcedure
     .input(runIdInputSchema)
     .output(threadEventSchema.array())
     .handler(({ context, input }) => {
-      return mapRunError(() => context.services.run.getEvents(input));
+      return mapRunError(() =>
+        context.services.run.getEventsForUser({
+          runId: input.runId,
+          userId: context.user.id,
+        }),
+      );
     }),
 
-  get: procedure
+  get: protectedProcedure
     .input(runIdInputSchema)
     .output(agentRunRecordSchema)
     .handler(({ context, input }) => {
-      return mapRunError(() => context.services.run.get(input));
+      return mapRunError(() =>
+        context.services.run.getForUser({
+          runId: input.runId,
+          userId: context.user.id,
+        }),
+      );
     }),
 
   input: procedure
     .input(runIdInputSchema)
     .output(runnerRunConfigSchema)
     .handler(({ context, input }) => {
-      return mapRunError(() => context.services.run.getInput(input));
+      return mapRunError(async () => {
+        await authenticateContextRunner(context, input.runId);
+        return context.services.run.getInput(input);
+      });
     }),
 
   uploadArtifact: procedure
     .input(uploadRunArtifactInputSchema)
     .output(artifactRefSchema)
-    .handler(async ({ context, input }) => {
-      await mapRunError(() => context.services.run.get({ runId: input.runId }));
-      const object = await context.storage.put({
-        body: input.file,
-        contentType: input.file.type || undefined,
-        path: input.path,
-        runId: input.runId,
-      });
+    .handler(({ context, input }) => {
+      return mapRunError(async () => {
+        await authenticateContextRunner(context, input.runId);
+        const object = await context.storage.put({
+          body: input.file,
+          contentType: input.file.type || undefined,
+          path: input.path,
+          runId: input.runId,
+        });
 
-      return buildArtifactRef(object);
+        return buildArtifactRef(object);
+      });
     }),
 };
 

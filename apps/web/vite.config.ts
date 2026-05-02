@@ -1,9 +1,15 @@
+import { tanstackStart } from "@tanstack/react-start/plugin/vite";
+import viteReact from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
-import viteReact from "@vitejs/plugin-react";
-
 const config = defineConfig({
-  plugins: [viteReact()],
+  plugins: [tanstackStart({ client: { entry: "src/main.tsx" } }), viteReact()],
+  server: {
+    forwardConsole: {
+      logLevels: ["warn", "error"],
+      unhandledErrors: true,
+    },
+  },
 });
 
 export default config;

@@ -22,6 +22,20 @@
       "when": 1777435569803,
       "tag": "0002_gifted_molten_man",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1777484033289,
+      "tag": "0003_lush_mandarin",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1777484509579,
+      "tag": "0004_demonic_lionheart",
+      "breakpoints": true
     }
   ]
 }

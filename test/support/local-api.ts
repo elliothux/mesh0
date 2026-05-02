@@ -9,7 +9,11 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { Context } from "../../apps/api/src/context";
-import { corsHeaders, rpcHandler, withCors } from "../../apps/api/src/orpc";
+import {
+  createCorsHeaders,
+  rpcHandler,
+  withCors,
+} from "../../apps/api/src/orpc";
 import { handleRunStorageRequest } from "../../apps/api/src/storage";
 import { createMemoryD1 } from "./memory-d1";
 
@@ -36,6 +40,21 @@ export async function startLocalDockerFsApi({
       image: runnerImage,
     }),
   });
+  const user = await services.user.upsert({
+    createdAt: new Date().toISOString(),
+    email: "local-runner-test@mesh0.local",
+    emailVerified: true,
+    firstName: "Local",
+    id: "user_local_runner_test",
+    lastName: "Runner",
+    lastSignInAt: null,
+    profilePictureUrl: null,
+    updatedAt: new Date().toISOString(),
+  });
+  const { key: apiKey } = await services.apiKey.create({
+    name: "Local runner smoke",
+    userId: user.id,
+  });
 
   const server = Bun.serve({
     fetch: (request) => {
@@ -53,6 +72,7 @@ export async function startLocalDockerFsApi({
         },
         db,
         env: {
+          APP_DOMAIN: "localhost",
           DB: d1,
           WORKOS_API_KEY: "sk_test_local",
           WORKOS_CLIENT_ID: "client_local",
@@ -72,6 +92,7 @@ export async function startLocalDockerFsApi({
 
   return {
     apiUrl: `http://127.0.0.1:${server.port}`,
+    apiKey,
     close() {
       server.stop(true);
       sqlite.close();
@@ -81,12 +102,15 @@ export async function startLocalDockerFsApi({
 
 async function handleApiRequest(request: Request, context: Context) {
   if (request.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders, status: 204 });
+    return new Response(null, {
+      headers: createCorsHeaders(request, context.env),
+      status: 204,
+    });
   }
 
   const storageResponse = await handleRunStorageRequest(request, context);
   if (storageResponse !== undefined) {
-    return withCors(storageResponse);
+    return withCors(storageResponse, request, context.env);
   }
 
   const result = await rpcHandler.handle(request, {
@@ -95,10 +119,14 @@ async function handleApiRequest(request: Request, context: Context) {
   });
 
   if (result.matched) {
-    return withCors(result.response);
+    return withCors(result.response, request, context.env);
   }
 
-  return withCors(new Response("Not Found", { status: 404 }));
+  return withCors(
+    new Response("Not Found", { status: 404 }),
+    request,
+    context.env,
+  );
 }
 
 function applyMigrations(sqlite: Database) {

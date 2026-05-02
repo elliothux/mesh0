@@ -4,8 +4,10 @@
   "type": "module",
   "exports": {
     ".": "./src/services.ts",
+    "./api-key": "./src/api-key.ts",
     "./run": "./src/run.ts",
-    "./system-prompt": "./src/system-prompt.ts"
+    "./system-prompt": "./src/system-prompt.ts",
+    "./user": "./src/user.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

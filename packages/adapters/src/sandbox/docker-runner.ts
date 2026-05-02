@@ -28,7 +28,10 @@ export class DockerSandbox implements RunnerSandbox {
     this.#platform = platform;
   }
 
-  async start({ run }: RunnerSandboxStart): Promise<RunnerSandboxDispatch> {
+  async start({
+    run,
+    runnerToken,
+  }: RunnerSandboxStart): Promise<RunnerSandboxDispatch> {
     const apiUrl = resolveDynamicValue(this.#apiUrl, "apiUrl");
     const image = resolveDynamicValue(this.#image, "image");
     const runtimeDir = await mkdtemp(join(tmpdir(), "mesh0-run-"));
@@ -49,6 +52,8 @@ export class DockerSandbox implements RunnerSandbox {
         `MESH0_API_URL=${apiUrl}`,
         "-e",
         `MESH0_RUN_ID=${run.id}`,
+        "-e",
+        `MESH0_RUNNER_TOKEN=${runnerToken}`,
         image,
         "-lc",
         buildRunnerCommand(),

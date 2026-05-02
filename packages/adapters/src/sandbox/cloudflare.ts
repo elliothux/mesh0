@@ -24,11 +24,15 @@ export class CloudflareSandbox implements RunnerSandbox {
     this.#getContainer = getContainer;
   }
 
-  async start({ run }: RunnerSandboxStart): Promise<RunnerSandboxDispatch> {
+  async start({
+    run,
+    runnerToken,
+  }: RunnerSandboxStart): Promise<RunnerSandboxDispatch> {
     await this.#getContainer(run.id).start({
       envVars: {
         MESH0_API_URL: this.#apiUrl,
         MESH0_RUN_ID: run.id,
+        MESH0_RUNNER_TOKEN: runnerToken,
       },
       entrypoint: buildRunnerEntrypoint(),
       labels: { "mesh0.run_id": run.id },

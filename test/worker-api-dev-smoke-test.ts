@@ -29,6 +29,7 @@ const outputTask = Promise.all([
 try {
   await waitForApiDev(apiDev);
   await runSdkUserFlow({
+    apiKey: smokeEnv.mesh0ApiKey,
     apiUrl: WORKER_API_URL,
     env: smokeEnv.openai,
     label: "worker-api-dev-smoke",

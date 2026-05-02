@@ -20,23 +20,27 @@ export const userSchema = z.strictObject({
   lastSignInAt: z.string().nullable(),
 });
 
-export const userAuthorizationUrlInputSchema = z.strictObject({
-  redirectUri: z.string().url().optional(),
-  state: nonEmptyStringSchema.optional(),
+export const apiKeySchema = z.strictObject({
+  id: nonEmptyStringSchema,
+  userId: nonEmptyStringSchema,
+  name: nonEmptyStringSchema,
+  prefix: nonEmptyStringSchema,
+  createdAt: nonEmptyStringSchema,
+  lastUsedAt: z.string().nullable(),
+  revokedAt: z.string().nullable(),
 });
 
-export const userAuthorizationUrlResultSchema = z.strictObject({
-  authorizationUrl: nonEmptyStringSchema,
+export const createApiKeyInputSchema = z.strictObject({
+  name: z.string().trim().min(1),
 });
 
-export const authenticateUserInputSchema = z.strictObject({
-  code: nonEmptyStringSchema,
+export const createApiKeyResultSchema = z.strictObject({
+  apiKey: apiKeySchema,
+  key: nonEmptyStringSchema,
 });
 
-export const authenticatedUserSchema = z.strictObject({
-  accessToken: nonEmptyStringSchema,
-  refreshToken: nonEmptyStringSchema,
-  user: userSchema,
+export const revokeApiKeyInputSchema = z.strictObject({
+  apiKeyId: nonEmptyStringSchema,
 });
 
 export const mcpServerToolConfigSchema = z.strictObject({
@@ -164,6 +168,7 @@ export const artifactRefSchema = z.strictObject({
 
 export const agentRunRecordSchema = z.strictObject({
   id: nonEmptyStringSchema,
+  userId: nonEmptyStringSchema,
   input: agentRunInputSchema,
   status: agentRunStatusSchema,
   artifacts: z.array(artifactRefSchema),

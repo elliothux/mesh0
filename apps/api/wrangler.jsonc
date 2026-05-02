@@ -4,6 +4,9 @@
   "workers_dev": true,
   "preview_urls": false,
   "compatibility_date": "2026-02-24",
+  "vars": {
+    "APP_DOMAIN": "mesh0.run"
+  },
   "d1_databases": [
     {
       "binding": "DB",

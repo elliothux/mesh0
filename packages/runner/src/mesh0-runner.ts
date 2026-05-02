@@ -61,7 +61,9 @@ async function run(options: RunnerOptions) {
   const log = (message: string) => appendLine(paths.runnerLogPath, message);
 
   const apiClient =
-    options.apiUrl === undefined ? undefined : createApiClient(options.apiUrl);
+    options.apiUrl === undefined
+      ? undefined
+      : createApiClient(options.apiUrl, requireRunnerToken(options));
   const config = await readRunnerConfig({
     apiClient,
     runId: options.runId,
@@ -168,6 +170,7 @@ function parseOptions(args: string[]): RunnerOptions {
   const options: RunnerOptions = {
     outputDir,
     runJson: process.env.MESH0_RUN_JSON ?? join(runtimeDir, "run.json"),
+    runnerToken: process.env.MESH0_RUNNER_TOKEN,
     runtimeDir,
     workspace,
   };
@@ -208,10 +211,23 @@ function parseOptions(args: string[]): RunnerOptions {
       continue;
     }
 
+    if (arg === "--runner-token") {
+      options.runnerToken = readOptionValue(args, (index += 1), arg);
+      continue;
+    }
+
     throw new Error(`Unknown run option: ${arg}`);
   }
 
   return options;
+}
+
+function requireRunnerToken(options: RunnerOptions) {
+  if (options.runnerToken === undefined || options.runnerToken.length === 0) {
+    throw new Error("runnerToken is required when apiUrl is provided");
+  }
+
+  return options.runnerToken;
 }
 
 async function readRunnerConfig({
@@ -491,7 +507,7 @@ async function printReady() {
 function printHelp() {
   console.log(`Usage:
   mesh0-runner
-  mesh0-runner run [--runtime-dir DIR] [--workspace DIR] [--output-dir DIR] [--run-json FILE] [--api-url URL] [--run-id ID]`);
+  mesh0-runner run [--runtime-dir DIR] [--workspace DIR] [--output-dir DIR] [--run-json FILE] [--api-url URL] [--run-id ID] [--runner-token TOKEN]`);
 }
 
 function readOptionValue(args: string[], index: number, option: string) {

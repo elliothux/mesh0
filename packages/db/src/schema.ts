@@ -18,13 +18,30 @@ export const users = sqliteTable("users", {
   lastSignInAt: text("last_sign_in_at"),
 });
 
+export const apiKeys = sqliteTable("api_keys", {
+  id: text("id").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  prefix: text("prefix").notNull(),
+  secretHash: text("secret_hash").notNull(),
+  createdAt: text("created_at").notNull(),
+  lastUsedAt: text("last_used_at"),
+  revokedAt: text("revoked_at"),
+});
+
 export const agentRuns = sqliteTable("agent_runs", {
   id: text("id").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
   input: text("input").notNull(),
   status: text("status", {
     enum: ["queued", "running", "completed", "failed", "canceled"],
   }).notNull(),
   artifacts: text("artifacts").notNull(),
+  runnerTokenHash: text("runner_token_hash").notNull(),
   createdAt: text("created_at").notNull(),
   startedAt: text("started_at"),
   finishedAt: text("finished_at"),

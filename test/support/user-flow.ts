@@ -5,6 +5,7 @@ import { z } from "zod";
 const LAST_MESSAGE_PATH = "output/codex/last-message.txt";
 
 const smokeEnvSchema = z.strictObject({
+  MESH0_API_KEY: z.string().min(1).optional(),
   OPENAI_API_KEY: z.string().min(1),
   OPENAI_BASE_URL: z.string().min(1),
   OPENAI_MODEL: z.string().min(1),
@@ -12,6 +13,7 @@ const smokeEnvSchema = z.strictObject({
 });
 
 interface SmokeEnv {
+  mesh0ApiKey: string | undefined;
   openai: OpenAiEnv;
   runnerImage: string;
 }
@@ -23,9 +25,11 @@ export function readSmokeEnv(): SmokeEnv {
       process.env.RUNNER_SMOKE_BASE_URL ?? process.env.OPENAI_BASE_URL,
     OPENAI_MODEL: process.env.RUNNER_SMOKE_MODEL ?? process.env.OPENAI_MODEL,
     RUNNER_IMAGE: process.env.RUNNER_IMAGE ?? "mesh0/runner:local",
+    MESH0_API_KEY: process.env.MESH0_API_KEY,
   });
 
   return {
+    mesh0ApiKey: env.MESH0_API_KEY,
     openai: {
       OPENAI_API_KEY: env.OPENAI_API_KEY,
       OPENAI_BASE_URL: env.OPENAI_BASE_URL,
@@ -41,14 +45,16 @@ export async function runSdkUserFlow({
   expectedText = "mesh0-runner-smoke-ok",
   label,
   question,
+  apiKey,
 }: {
   apiUrl: string;
+  apiKey?: string;
   env: OpenAiEnv;
   expectedText?: string;
   label: string;
   question?: string;
 }) {
-  const mesh0 = createMesh0({ apiUrl });
+  const mesh0 = createMesh0({ apiKey, apiUrl });
   const run = await mesh0
     .agent()
     .env(env)

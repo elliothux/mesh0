@@ -5,12 +5,13 @@ import type {
   agentRunRecordSchema,
   agentRunStatusSchema,
   agentSystemPromptSchema,
+  apiKeySchema,
   appendRunEventsInputSchema,
   appendRunEventsResultSchema,
   artifactRefSchema,
-  authenticateUserInputSchema,
-  authenticatedUserSchema,
   completeRunInputSchema,
+  createApiKeyInputSchema,
+  createApiKeyResultSchema,
   downloadRunArtifactInputSchema,
   gitSkillRefSchema,
   mcpServerConfigSchema,
@@ -20,12 +21,11 @@ import type {
   mcpStdioServerSchema,
   mcpStreamableHttpServerSchema,
   openAiEnvSchema,
+  revokeApiKeyInputSchema,
   runIdInputSchema,
   runnerRunConfigSchema,
   skillRefSchema,
   uploadRunArtifactInputSchema,
-  userAuthorizationUrlInputSchema,
-  userAuthorizationUrlResultSchema,
   userSchema,
   wellKnownSkillRefSchema,
   workspaceRefSchema,
@@ -33,17 +33,13 @@ import type {
 
 export type User = z.infer<typeof userSchema>;
 
-export type UserAuthorizationUrlInput = z.infer<
-  typeof userAuthorizationUrlInputSchema
->;
+export type ApiKey = z.infer<typeof apiKeySchema>;
 
-export type UserAuthorizationUrlResult = z.infer<
-  typeof userAuthorizationUrlResultSchema
->;
+export type CreateApiKeyInput = z.infer<typeof createApiKeyInputSchema>;
 
-export type AuthenticateUserInput = z.infer<typeof authenticateUserInputSchema>;
+export type CreateApiKeyResult = z.infer<typeof createApiKeyResultSchema>;
 
-export type AuthenticatedUser = z.infer<typeof authenticatedUserSchema>;
+export type RevokeApiKeyInput = z.infer<typeof revokeApiKeyInputSchema>;
 
 export type McpServers = z.infer<typeof mcpServersSchema>;
 

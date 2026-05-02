@@ -5,6 +5,7 @@ export interface RunnerOptions {
   runJson: string;
   apiUrl?: string;
   runId?: string;
+  runnerToken?: string;
 }
 
 export interface OutputObject {

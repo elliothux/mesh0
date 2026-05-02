@@ -1,6 +1,7 @@
 import { parseRunStoragePathname } from "@mesh0/sdk/artifacts";
 import { RunNotFoundError } from "@mesh0/services/run";
-import type { Context } from "./context";
+import { ORPCError } from "@orpc/server";
+import { authenticateContextUser, type Context } from "./context";
 
 export async function handleRunStorageRequest(
   request: Request,
@@ -16,8 +17,16 @@ export async function handleRunStorageRequest(
   }
 
   try {
-    await context.services.run.get({ runId: input.runId });
+    const user = await authenticateContextUser(context);
+    await context.services.run.getForUser({
+      runId: input.runId,
+      userId: user.id,
+    });
   } catch (error) {
+    if (error instanceof ORPCError) {
+      return new Response(error.message, { status: error.status });
+    }
+
     if (error instanceof RunNotFoundError) {
       return new Response("Not Found", { status: 404 });
     }

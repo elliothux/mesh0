@@ -531,6 +531,106 @@ pre {
     max(80px, env(safe-area-inset-bottom));
 }
 
+.dashboard-shell {
+  min-height: 100svh;
+  background:
+    linear-gradient(var(--line), var(--line)) var(--page-gutter) 0 / 1px 100%
+      no-repeat,
+    linear-gradient(var(--line), var(--line))
+      calc(100% - var(--page-gutter) - 1px) 0 / 1px 100% no-repeat,
+    var(--black);
+  padding: max(22px, env(safe-area-inset-top)) var(--section-x)
+    max(64px, env(safe-area-inset-bottom));
+}
+
+.dashboard-nav {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  max-width: var(--max-page);
+  margin: 0 auto;
+}
+
+.dashboard-hero,
+.dashboard-grid,
+.dashboard-panel {
+  max-width: var(--max-page);
+  margin-inline: auto;
+}
+
+.dashboard-hero {
+  display: grid;
+  gap: 18px;
+  padding: clamp(72px, 12vw, 148px) 0 clamp(42px, 7vw, 76px);
+}
+
+.dashboard-hero h1,
+.dashboard-panel h2 {
+  margin: 0;
+  color: var(--white);
+  font-family: "Instrument Serif", ui-serif, Georgia, serif;
+  font-weight: 300;
+  letter-spacing: 0;
+}
+
+.dashboard-hero h1 {
+  font-size: clamp(3rem, 7vw, 6rem);
+  line-height: 0.95;
+}
+
+.dashboard-hero p {
+  max-width: 58ch;
+  margin: 0;
+  color: var(--muted);
+  font-size: clamp(1rem, 1vw + 0.84rem, 1.35rem);
+  line-height: 1.45;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  border-top: 1px solid var(--line);
+  border-left: 1px solid var(--line);
+}
+
+.dashboard-metric {
+  display: grid;
+  gap: 22px;
+  min-height: 148px;
+  padding: 24px;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: oklch(100% 0 0 / 0.02);
+}
+
+.dashboard-metric span {
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.dashboard-metric strong {
+  align-self: end;
+  color: var(--white);
+  font-family: "Instrument Serif", ui-serif, Georgia, serif;
+  font-size: clamp(2.4rem, 4vw, 4rem);
+  font-weight: 300;
+  line-height: 0.9;
+}
+
+.dashboard-panel {
+  display: grid;
+  gap: 28px;
+  margin-top: clamp(32px, 5vw, 64px);
+  padding-top: clamp(32px, 5vw, 56px);
+  border-top: 1px solid var(--line);
+}
+
+.dashboard-panel h2 {
+  font-size: clamp(2rem, 4vw, 4rem);
+  line-height: 1;
+}
+
 @media (min-width: 720px) {
   .hero-slogan h1 span {
     white-space: nowrap;

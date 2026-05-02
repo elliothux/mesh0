@@ -30,6 +30,7 @@ try {
   await Promise.all(
     cases.map(({ expectedText, label, question }) =>
       runSdkUserFlow({
+        apiKey: localApi.apiKey,
         apiUrl: localApi.apiUrl,
         env: smokeEnv.openai,
         expectedText,

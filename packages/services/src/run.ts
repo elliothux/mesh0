@@ -15,12 +15,20 @@ import type {
 import type { ThreadEvent } from "@openai/codex-sdk";
 import { asc, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
+import { constantTimeEqual, hashSecret } from "./secrets";
 import { resolveSystemPrompt } from "./system-prompt";
 
 export class RunNotFoundError extends Error {
   constructor() {
     super("Run not found");
     this.name = "RunNotFoundError";
+  }
+}
+
+export class RunAuthenticationError extends Error {
+  constructor() {
+    super("Invalid runner token");
+    this.name = "RunAuthenticationError";
   }
 }
 
@@ -33,14 +41,16 @@ export class RunService {
     this.#sandbox = sandbox;
   }
 
-  async create(input: AgentRunInput): Promise<AgentRunRecord> {
+  async create(userId: string, input: AgentRunInput): Promise<AgentRunRecord> {
     const runId = `run_${nanoid()}`;
+    const runnerToken = nanoid(48);
     const record: AgentRunRecord = {
       artifacts: [],
       createdAt: new Date().toISOString(),
       id: runId,
       input,
       status: "queued",
+      userId,
     };
 
     await this.#db.insert(agentRuns).values({
@@ -48,22 +58,46 @@ export class RunService {
       createdAt: record.createdAt,
       id: record.id,
       input: JSON.stringify(record.input),
+      runnerTokenHash: await hashSecret(runnerToken),
       status: record.status,
+      userId: record.userId,
     });
 
-    return this.#startExecution(record);
+    return this.#startExecution(record, runnerToken);
   }
 
-  async get({ runId }: RunIdInput): Promise<AgentRunRecord> {
-    return this.#getStoredRun(runId);
+  async getForUser({
+    runId,
+    userId,
+  }: RunIdInput & { userId: string }): Promise<AgentRunRecord> {
+    const run = await this.#getStoredRun(runId);
+    if (run.userId !== userId) {
+      throw new RunNotFoundError();
+    }
+
+    return run;
   }
 
   async getInput({ runId }: RunIdInput): Promise<RunnerRunConfig> {
     return buildRunnerRunConfig(await this.#getStoredRun(runId));
   }
 
-  async getEvents({ runId }: RunIdInput): Promise<ThreadEvent[]> {
-    await this.#getStoredRun(runId);
+  async authenticateRunner({
+    runId,
+    runnerToken,
+  }: RunIdInput & { runnerToken: string }): Promise<void> {
+    const run = await this.#getStoredRunRow(runId);
+    const runnerTokenHash = await hashSecret(runnerToken);
+    if (!constantTimeEqual(runnerTokenHash, run.runnerTokenHash)) {
+      throw new RunAuthenticationError();
+    }
+  }
+
+  async getEventsForUser({
+    runId,
+    userId,
+  }: RunIdInput & { userId: string }): Promise<ThreadEvent[]> {
+    await this.getForUser({ runId, userId });
     return this.#getStoredRunEvents(runId);
   }
 
@@ -92,7 +126,6 @@ export class RunService {
         .where(eq(agentRuns.id, runId));
     }
 
-    // TODO: Require a short-lived runner token before accepting event writes.
     return { appended: eventList.length };
   }
 
@@ -125,6 +158,10 @@ export class RunService {
   }
 
   async #getStoredRun(runId: string) {
+    return parseRun(await this.#getStoredRunRow(runId));
+  }
+
+  async #getStoredRunRow(runId: string) {
     const [run] = await this.#db
       .select()
       .from(agentRuns)
@@ -134,7 +171,7 @@ export class RunService {
       throw new RunNotFoundError();
     }
 
-    return parseRun(run);
+    return run;
   }
 
   async #getStoredRunEvents(runId: string) {
@@ -149,7 +186,7 @@ export class RunService {
       .parse(events.map(({ event }) => JSON.parse(event)));
   }
 
-  async #startExecution(record: AgentRunRecord) {
+  async #startExecution(record: AgentRunRecord, runnerToken: string) {
     if (this.#sandbox === undefined) {
       return record;
     }
@@ -157,6 +194,7 @@ export class RunService {
     try {
       const dispatch = await this.#sandbox.start({
         run: record,
+        runnerToken,
       });
       if (dispatch.completion !== undefined) {
         void this.#completeOnDispatchFailure(record.id, dispatch.completion);
@@ -215,6 +253,7 @@ function parseRun(run: AgentRun) {
     lastMessage: run.lastMessage ?? undefined,
     startedAt: run.startedAt ?? undefined,
     status: run.status,
+    userId: run.userId,
   });
 }
 

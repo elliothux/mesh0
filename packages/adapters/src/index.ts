@@ -5,6 +5,7 @@ import type { AgentRunRecord } from "@mesh0/sdk/types";
  */
 export interface RunnerSandboxStart {
   run: AgentRunRecord;
+  runnerToken: string;
 }
 
 export interface RunnerSandboxDispatch {

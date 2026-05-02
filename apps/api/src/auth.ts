@@ -1,13 +1,21 @@
 import type { User as DbUser } from "@mesh0/db/types";
+import {
+  AUTH_ACCESS_TOKEN_COOKIE,
+  AUTH_REFRESH_TOKEN_COOKIE,
+  AUTH_SESSION_MAX_AGE_SECONDS,
+} from "@mesh0/sdk/auth";
 import { ORPCError } from "@orpc/server";
 import type { User as WorkOSUser } from "@workos-inc/node/worker";
 import { WorkOS } from "@workos-inc/node/worker";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { z } from "zod";
 import type { AppEnv } from "./env";
-
-const API_ORIGIN = "https://api.mesh0.run";
-const BEARER_PREFIX = "Bearer ";
+import {
+  defaultWebUrl,
+  getBearerToken,
+  isAllowedWebUrl,
+  isLocalHost,
+} from "./http";
 
 const accessTokenClaimsSchema = z.looseObject({
   sub: z.string().min(1),
@@ -71,13 +79,63 @@ export function createWorkOSAuth(env: AppEnv): WorkOSAuth {
 }
 
 export function defaultRedirectUri(request: Request) {
-  const url = new URL(request.url);
-  const origin =
-    url.hostname === "localhost" || url.hostname === "127.0.0.1"
-      ? url.origin
-      : API_ORIGIN;
+  return new URL("/auth/callback", request.url).toString();
+}
 
-  return `${origin}/auth/callback`;
+export function resolveAuthRedirectUrl({
+  env,
+  next,
+  request,
+}: {
+  env: AppEnv;
+  next: string | null | undefined;
+  request: Request;
+}) {
+  const fallbackUrl = defaultWebUrl(env, request, "/dashboard");
+  if (next === null || next === undefined || next === "") {
+    return fallbackUrl;
+  }
+
+  try {
+    const redirectUrl = new URL(next, fallbackUrl);
+    return isAllowedWebUrl(env, request, redirectUrl) ? redirectUrl : null;
+  } catch {
+    return null;
+  }
+}
+
+export function appendAuthCookies({
+  env,
+  headers,
+  request,
+  tokens,
+}: {
+  env: AppEnv;
+  headers: Headers;
+  request: Request;
+  tokens: { accessToken: string; refreshToken: string };
+}) {
+  const requestUrl = new URL(request.url);
+  const isLocalRequest = isLocalHost(requestUrl.hostname);
+  const domain = isLocalRequest ? undefined : `.${env.APP_DOMAIN}`;
+  const secure = requestUrl.protocol === "https:" || !isLocalRequest;
+
+  headers.append(
+    "Set-Cookie",
+    serializeCookie(AUTH_ACCESS_TOKEN_COOKIE, tokens.accessToken, {
+      domain,
+      maxAge: AUTH_SESSION_MAX_AGE_SECONDS,
+      secure,
+    }),
+  );
+  headers.append(
+    "Set-Cookie",
+    serializeCookie(AUTH_REFRESH_TOKEN_COOKIE, tokens.refreshToken, {
+      domain,
+      maxAge: AUTH_SESSION_MAX_AGE_SECONDS,
+      secure,
+    }),
+  );
 }
 
 export function mapWorkOSUser(user: WorkOSUser) {
@@ -112,12 +170,13 @@ async function authenticateRequest(
   request: Request,
   jwks: ReturnType<typeof createRemoteJWKSet>,
 ): Promise<AuthenticatedRequest> {
-  const authorization = request.headers.get("Authorization");
-  if (authorization === null || !authorization.startsWith(BEARER_PREFIX)) {
-    throw new ORPCError("UNAUTHORIZED", { message: "Missing bearer token" });
+  const accessToken =
+    getBearerToken(request) ??
+    getCookieValue(request, AUTH_ACCESS_TOKEN_COOKIE);
+  if (accessToken === undefined) {
+    throw new ORPCError("UNAUTHORIZED", { message: "Missing access token" });
   }
 
-  const accessToken = authorization.slice(BEARER_PREFIX.length);
   const claims = await verifyAccessToken(accessToken, jwks);
 
   return {
@@ -131,9 +190,7 @@ async function verifyAccessToken(
   jwks: ReturnType<typeof createRemoteJWKSet>,
 ) {
   try {
-    const { payload } = await jwtVerify(accessToken, jwks, {
-      issuer: ["https://api.workos.com", "https://api.workos.com/"],
-    });
+    const { payload } = await jwtVerify(accessToken, jwks);
 
     return accessTokenClaimsSchema.parse(payload);
   } catch (error) {
@@ -141,4 +198,50 @@ async function verifyAccessToken(
       message: error instanceof Error ? error.message : String(error),
     });
   }
+}
+
+function serializeCookie(
+  name: string,
+  value: string,
+  options: { domain: string | undefined; maxAge: number; secure: boolean },
+) {
+  const parts = [
+    `${name}=${encodeURIComponent(value)}`,
+    `Max-Age=${options.maxAge}`,
+    "Path=/",
+    "HttpOnly",
+    "SameSite=Lax",
+  ];
+
+  if (options.domain !== undefined) {
+    parts.push(`Domain=${options.domain}`);
+  }
+
+  if (options.secure) {
+    parts.push("Secure");
+  }
+
+  return parts.join("; ");
+}
+
+function getCookieValue(request: Request, name: string) {
+  const cookieHeader = request.headers.get("Cookie");
+  if (cookieHeader === null) {
+    return undefined;
+  }
+
+  for (const cookie of cookieHeader.split(";")) {
+    const [rawName, ...rawValue] = cookie.trim().split("=");
+    if (rawName === name) {
+      try {
+        return decodeURIComponent(rawValue.join("="));
+      } catch (error) {
+        throw new ORPCError("UNAUTHORIZED", {
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+  }
+
+  return undefined;
 }

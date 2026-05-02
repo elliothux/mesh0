@@ -57,8 +57,14 @@ export function parseRuntimeEvent(line: string) {
   return threadEventSchema.parse(JSON.parse(line));
 }
 
-export function createApiClient(apiUrl: string): RpcClient {
-  const link = new RPCLink({ url: `${apiUrl}/rpc` });
+export function createApiClient(
+  apiUrl: string,
+  runnerToken: string,
+): RpcClient {
+  const link = new RPCLink({
+    headers: () => ({ Authorization: `Bearer ${runnerToken}` }),
+    url: `${apiUrl}/rpc`,
+  });
   return createORPCClient(link);
 }
 
