@@ -84,8 +84,10 @@ function preloadDashboardRoutes() {
   dashboardPreload ??= Promise.all([
     import("../routes/_dashboard/route"),
     import("../routes/_dashboard/runs"),
-    import("../routes/_dashboard/artifacts"),
-    import("../routes/_dashboard/observability"),
+    import("../routes/_dashboard/run.$runId"),
+    import("../routes/_dashboard/run.$runId.artifacts"),
+    import("../routes/_dashboard/run.$runId.index"),
+    import("../routes/_dashboard/run.$runId.observability"),
     import("../routes/_dashboard/keys"),
   ]).then(() => undefined);
 

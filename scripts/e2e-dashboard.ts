@@ -39,11 +39,8 @@ async function main() {
     const page = await context.newPage();
 
     await testRunsPage(page, webUrl, dashboardApi.seed.completedRunId);
-    await testArtifactsPage(page, webUrl, {
+    await testRunDetailPage(page, webUrl, {
       artifactPath: dashboardApi.seed.artifactPath,
-      completedRunId: dashboardApi.seed.completedRunId,
-    });
-    await testObservabilityPage(page, webUrl, {
       completedRunId: dashboardApi.seed.completedRunId,
       eventType: dashboardApi.seed.eventType,
     });
@@ -105,53 +102,8 @@ async function testRunsPage(
   assert(copiedTableRunId === completedRunId, "run table copy failed");
   assert(
     new URL(page.url()).searchParams.get("runId") === null,
-    "copying a run row value opened the detail dialog",
+    "copying a run row value changed the runs URL",
   );
-  await completedRunRow.click();
-  await page.waitForURL((url) => url.searchParams.get("runId") !== null);
-  assert(
-    new URL(page.url()).searchParams.get("runId") === completedRunId,
-    "run detail did not write run id to the URL",
-  );
-  await page.getByRole("heading", { name: "Run detail" }).waitFor();
-  const runDialog = page.getByRole("dialog");
-  await runDialog
-    .getByRole("button", { exact: true, name: "Copy run ID" })
-    .click();
-  const copiedRunId = await page.evaluate(() => navigator.clipboard.readText());
-  assert(copiedRunId === completedRunId, "run id copy failed");
-  await runDialog.getByRole("button", { name: "Copy Status" }).click();
-  const copiedRunStatus = await page.evaluate(() =>
-    navigator.clipboard.readText(),
-  );
-  assert(copiedRunStatus === "completed", "run detail status copy failed");
-  await runDialog.getByRole("button", { name: "Copy prompt" }).click();
-  const copiedRunPrompt = await page.evaluate(() =>
-    navigator.clipboard.readText(),
-  );
-  assert(
-    copiedRunPrompt === "Completed dashboard run with artifact",
-    "run prompt copy failed",
-  );
-  await runDialog.getByRole("button", { name: "Copy last message" }).click();
-  const copiedRunLastMessage = await page.evaluate(() =>
-    navigator.clipboard.readText(),
-  );
-  assert(
-    copiedRunLastMessage === "dashboard completed ok",
-    "run last message copy failed",
-  );
-
-  await page.getByRole("link", { name: "Events" }).click();
-  await page.waitForURL((url) => url.pathname === "/observability");
-  assert(
-    new URL(page.url()).searchParams.get("runId") === completedRunId,
-    "runs to observability link did not carry run id",
-  );
-  assertDefaultSearch(page.url(), {
-    eventType: "all",
-    page: "1",
-  });
 
   await page.goto(new URL("/runs?page=1&status=missing", webUrl).toString(), {
     waitUntil: "domcontentloaded",
@@ -164,50 +116,67 @@ async function testRunsPage(
   );
 }
 
-async function testArtifactsPage(
+async function testRunDetailPage(
   page: Page,
   webUrl: string,
-  seed: { artifactPath: string; completedRunId: string },
+  seed: { artifactPath: string; completedRunId: string; eventType: string },
 ) {
-  const url = new URL("/artifacts", webUrl);
-  url.searchParams.set("page", "1");
-  url.searchParams.set("runId", seed.completedRunId);
-  await page.goto(url.toString(), { waitUntil: "domcontentloaded" });
-  await page.getByRole("heading", { name: "Run artifacts" }).waitFor();
-  assertDefaultSearch(page.url(), {
-    page: "1",
-    runId: seed.completedRunId,
+  await page.goto(new URL(`/run/${seed.completedRunId}`, webUrl).toString(), {
+    waitUntil: "domcontentloaded",
   });
-  await page.getByLabel("Search by run ID").waitFor();
-  await page.getByRole("button", { name: "Refresh" }).click();
-  await page.getByText("Artifacts refreshed").waitFor();
-  const artifactRow = page
+  await page.getByRole("heading", { name: seed.completedRunId }).waitFor();
+  await page.getByRole("link", { name: "Info" }).click();
+  await page
     .locator("tbody tr")
-    .filter({ hasText: seed.artifactPath })
-    .first();
-  await artifactRow.getByRole("button", { name: "Copy run ID" }).click();
-  const copiedArtifactRunId = await page.evaluate(() =>
+    .filter({ hasText: "Run ID" })
+    .filter({ hasText: seed.completedRunId })
+    .waitFor();
+  await page
+    .locator("tbody tr")
+    .filter({ hasText: "Status" })
+    .filter({ hasText: "completed" })
+    .waitFor();
+  await page
+    .locator("tbody tr")
+    .filter({ hasText: "Artifacts" })
+    .filter({ hasText: "1" })
+    .waitFor();
+  await page.getByText("Completed dashboard run with artifact").waitFor();
+  await page.getByText("dashboard completed ok").waitFor();
+  await page.getByRole("button", { name: "Copy Status" }).click();
+  const copiedRunStatus = await page.evaluate(() =>
+    navigator.clipboard.readText(),
+  );
+  assert(copiedRunStatus === "completed", "run detail status copy failed");
+  await page.getByRole("button", { name: "Copy prompt" }).click();
+  const copiedRunPrompt = await page.evaluate(() =>
     navigator.clipboard.readText(),
   );
   assert(
-    copiedArtifactRunId === seed.completedRunId,
-    "artifact table run id copy failed",
+    copiedRunPrompt === "Completed dashboard run with artifact",
+    "run prompt copy failed",
   );
-  await artifactRow.click();
+  await page.getByRole("button", { name: "Copy last message" }).click();
+  const copiedRunLastMessage = await page.evaluate(() =>
+    navigator.clipboard.readText(),
+  );
+  assert(
+    copiedRunLastMessage === "dashboard completed ok",
+    "run last message copy failed",
+  );
+
+  await page.getByRole("link", { name: "Artifacts" }).click();
+  await page.waitForURL((url) =>
+    url.pathname.endsWith(`/${seed.completedRunId}/artifacts`),
+  );
+  const artifactUrl = new URL(page.url());
+  artifactUrl.searchParams.set("path", seed.artifactPath);
+  await page.goto(artifactUrl.toString(), { waitUntil: "domcontentloaded" });
   await page.waitForURL(
-    (nextUrl) => nextUrl.searchParams.get("artifactId") !== null,
+    (nextUrl) => nextUrl.searchParams.get("path") === seed.artifactPath,
   );
-  assertDefaultSearch(page.url(), { page: "1" });
-  await page.getByRole("heading", { name: "Artifact detail" }).waitFor();
-  const artifactDialog = page.getByRole("dialog");
-  await artifactDialog.getByRole("button", { name: "Copy Path" }).click();
-  const copiedArtifactDetailPath = await page.evaluate(() =>
-    navigator.clipboard.readText(),
-  );
-  assert(
-    copiedArtifactDetailPath === seed.artifactPath,
-    "artifact detail copy failed",
-  );
+  await page.getByRole("heading", { name: seed.artifactPath }).waitFor();
+  await page.getByText("dashboard artifact ok").waitFor();
 
   const downloadHref = await page
     .getByRole("link", { name: "Download" })
@@ -220,34 +189,22 @@ async function testArtifactsPage(
     "artifact download returned unexpected content",
   );
 
-  await page.goto(new URL("/artifacts?page=0", webUrl).toString(), {
-    waitUntil: "domcontentloaded",
-  });
-  await page.waitForURL(
-    (nextUrl) =>
-      nextUrl.pathname === "/artifacts" &&
-      nextUrl.searchParams.get("page") === "1",
+  await page.getByRole("link", { name: "Observability" }).click();
+  await page.waitForURL((nextUrl) =>
+    nextUrl.pathname.endsWith(`/${seed.completedRunId}/observability`),
   );
-}
-
-async function testObservabilityPage(
-  page: Page,
-  webUrl: string,
-  seed: { completedRunId: string; eventType: string },
-) {
-  const url = new URL("/observability", webUrl);
+  await page.getByText("3 events").waitFor();
+  await page.getByText("thread.started").first().waitFor();
+  await page.getByText("turn.completed").first().waitFor();
+  const url = new URL(`/run/${seed.completedRunId}/observability`, webUrl);
   url.searchParams.set("eventType", "all");
   url.searchParams.set("page", "1");
-  url.searchParams.set("runId", seed.completedRunId);
   await page.goto(url.toString(), { waitUntil: "domcontentloaded" });
-  await page.getByRole("heading", { name: "Agent observability" }).waitFor();
+  await page.getByRole("heading", { name: seed.completedRunId }).waitFor();
   assertDefaultSearch(page.url(), {
     eventType: "all",
     page: "1",
-    runId: seed.completedRunId,
   });
-  await page.getByRole("button", { name: "Refresh" }).click();
-  await page.getByText("Events refreshed").waitFor();
   await page.getByLabel("Filter by event type").click();
   await page
     .locator('[data-slot="select-item"]')
@@ -260,27 +217,17 @@ async function testObservabilityPage(
     .locator("tbody tr")
     .filter({ hasText: seed.eventType })
     .first();
-  await eventRow.getByRole("button", { name: "Copy run ID" }).click();
-  const copiedEventRunIdFromTable = await page.evaluate(() =>
-    navigator.clipboard.readText(),
-  );
-  assert(
-    copiedEventRunIdFromTable === seed.completedRunId,
-    "event table run id copy failed",
-  );
   await eventRow.click();
   await page.waitForURL(
     (nextUrl) => nextUrl.searchParams.get("eventId") !== null,
   );
-  await page.getByRole("heading", { name: "Event detail" }).waitFor();
   await page.getByText("msg_dashboard_completed").first().waitFor();
-  const eventDialog = page.getByRole("dialog");
-  await eventDialog.getByRole("button", { name: "Copy Run ID" }).click();
+  await page.getByRole("button", { name: "Copy Run ID" }).last().click();
   const copiedEventRunId = await page.evaluate(() =>
     navigator.clipboard.readText(),
   );
   assert(copiedEventRunId === seed.completedRunId, "event detail copy failed");
-  await eventDialog.getByRole("button", { name: "Copy event payload" }).click();
+  await page.getByRole("button", { name: "Copy event payload" }).click();
   const copiedEventPayload = await page.evaluate(() =>
     navigator.clipboard.readText(),
   );
@@ -290,12 +237,15 @@ async function testObservabilityPage(
   );
 
   await page.goto(
-    new URL("/observability?eventType=nope&page=1", webUrl).toString(),
+    new URL(
+      `/run/${seed.completedRunId}/observability?eventType=nope&page=1`,
+      webUrl,
+    ).toString(),
     { waitUntil: "domcontentloaded" },
   );
   await page.waitForURL(
     (nextUrl) =>
-      nextUrl.pathname === "/observability" &&
+      nextUrl.pathname === `/run/${seed.completedRunId}/observability` &&
       nextUrl.searchParams.get("eventType") === "all" &&
       nextUrl.searchParams.get("page") === "1",
   );

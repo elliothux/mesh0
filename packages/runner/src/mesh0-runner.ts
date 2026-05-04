@@ -14,7 +14,6 @@ import {
   collectIfFile,
   commandVersion,
   createApiClient,
-  createWorkspaceArtifacts,
   parseRuntimeEvent,
   readJsonFile,
   readJsonFileIfExists,
@@ -24,6 +23,11 @@ import {
 } from "./io";
 import { prepareSkills } from "./skills";
 import type { OutputObject, RunnerOptions, RunnerStatus } from "./types";
+import {
+  WORKSPACE_ARTIFACT_STORAGE_PATH,
+  createWorkspaceSnapshot,
+} from "./workspace-snapshot";
+import { materializeRunWorkspaceSource } from "./workspace-source";
 
 await main().catch((error: unknown) => {
   console.error(
@@ -75,7 +79,14 @@ async function run(options: RunnerOptions) {
     config.baseInstructions ?? resolveSystemPrompt(config.systemPrompt);
 
   try {
-    await prepareWorkspace({ config, log, workspace });
+    await prepareWorkspace({
+      apiUrl: options.apiUrl,
+      config,
+      log,
+      runId,
+      runnerToken: options.runnerToken,
+      workspace,
+    });
     const preparedSkills = await prepareSkills({ config, log, runtimeDir });
     await writeFile(
       join(runtimeDir, "config.toml"),
@@ -135,14 +146,16 @@ async function run(options: RunnerOptions) {
 
     await log(`codex exited with code ${exitCode}`);
 
+    const status: RunnerStatus = exitCode === 0 ? "completed" : "failed";
+    const lastMessage = await readTextIfExists(paths.lastMessagePath);
+    await log(`run ${runId} ${status}`);
+
     const outputObjects = await collectOutputObjects({
+      config,
       paths,
       runId,
       workspace,
-      log,
     });
-    const status: RunnerStatus = exitCode === 0 ? "completed" : "failed";
-    const lastMessage = await readTextIfExists(paths.lastMessagePath);
 
     await writeOutputManifest({
       outputObjects,
@@ -164,8 +177,6 @@ async function run(options: RunnerOptions) {
       runId,
       status,
     });
-
-    await log(`run ${runId} ${status}`);
 
     if (exitCode !== 0) {
       process.exit(exitCode);
@@ -243,12 +254,12 @@ function parseOptions(args: string[]): RunnerOptions {
   return options;
 }
 
-function requireRunnerToken(options: RunnerOptions) {
-  if (options.runnerToken === undefined || options.runnerToken.length === 0) {
+function requireRunnerToken({ runnerToken }: { runnerToken?: string }) {
+  if (runnerToken === undefined || runnerToken.length === 0) {
     throw new Error("runnerToken is required when apiUrl is provided");
   }
 
-  return options.runnerToken;
+  return runnerToken;
 }
 
 function formatError(error: unknown) {
@@ -277,27 +288,48 @@ async function readRunnerConfig({
 }
 
 async function prepareWorkspace({
+  apiUrl,
   config,
   log,
+  runId,
+  runnerToken,
   workspace,
 }: {
+  apiUrl: string | undefined;
   config: RunnerRunConfig;
   log: (message: string) => Promise<void>;
+  runId: string;
+  runnerToken: string | undefined;
   workspace: string;
 }) {
-  const git = config.workspace?.git;
-  if (git === undefined) {
+  const source = config.workspace?.source;
+  if (source === undefined) {
     return;
   }
 
-  await log(`clone ${redactGitUrl(git.url)}`);
-  await runCommand("git", ["clone", git.url, workspace], {
+  if (source.type === "run") {
+    if (apiUrl === undefined) {
+      throw new Error("apiUrl is required for run workspace source");
+    }
+
+    await materializeRunWorkspaceSource({
+      apiUrl,
+      currentRunId: runId,
+      log,
+      runnerToken: requireRunnerToken({ runnerToken }),
+      workspace,
+    });
+    return;
+  }
+
+  await log(`clone ${redactGitUrl(source.url)}`);
+  await runCommand("git", ["clone", source.url, workspace], {
     check: true,
-    secrets: [git.url],
+    secrets: [source.url],
   });
-  if (git.ref !== undefined) {
-    await log(`checkout ${git.ref}`);
-    await runCommand("git", ["-C", workspace, "checkout", git.ref], {
+  if (source.ref !== undefined) {
+    await log(`checkout ${source.ref}`);
+    await runCommand("git", ["-C", workspace, "checkout", source.ref], {
       check: true,
     });
   }
@@ -369,12 +401,12 @@ function buildCodexArgs({
 }
 
 async function collectOutputObjects({
-  log,
+  config,
   paths,
   runId,
   workspace,
 }: {
-  log: (message: string) => Promise<void>;
+  config: RunnerRunConfig;
   paths: Awaited<ReturnType<typeof prepareOutputDirs>>;
   runId: string;
   workspace: string;
@@ -398,13 +430,19 @@ async function collectOutputObjects({
     paths.lastMessagePath,
     "codex/last-message.txt",
   );
-  await createWorkspaceArtifacts({
-    log,
+  await collectIfFile(
     outputObjects,
+    runId,
+    paths.runnerLogPath,
+    "mesh0/runner.log",
+  );
+  const workspaceSnapshot = await createWorkspaceSnapshot({
+    ignorePatterns: config.workspace?.ignorePatterns,
     runId,
     workspace,
     workspaceOutputDir: paths.workspaceOutputDir,
   });
+  outputObjects.push(...workspaceSnapshot.outputObjects);
   return outputObjects;
 }
 
@@ -439,26 +477,49 @@ async function buildCompletionArtifacts({
   apiClient: RpcClient | undefined;
   outputObjects: OutputObject[];
   runId: string;
-}) {
+}): Promise<ArtifactRef[]> {
   if (apiClient === undefined) {
-    return outputObjects.map((object) => ({
-      contentType: object.contentType,
-      id: object.digest,
-      kind: kindForArtifactPath(object.key),
-      runId,
-      uri: object.path,
-    }));
+    return outputObjects.map((object) => {
+      const path = outputObjectStoragePath(object, runId);
+      const artifact: ArtifactRef = {
+        contentType: object.contentType,
+        id: object.key,
+        kind: kindForArtifactPath(path),
+        runId,
+        uri: object.path,
+      };
+
+      if (path !== WORKSPACE_ARTIFACT_STORAGE_PATH) {
+        return artifact;
+      }
+
+      const workspaceArtifact: ArtifactRef = {
+        ...artifact,
+        kind: "directory",
+        name: "workspace",
+      };
+      return workspaceArtifact;
+    });
   }
 
   const artifacts: ArtifactRef[] = [];
   for (const object of outputObjects) {
-    artifacts.push(
-      await uploadOutputObject({
-        apiClient,
-        object,
-        runId,
-      }),
-    );
+    const path = outputObjectStoragePath(object, runId);
+    const artifact = await uploadOutputObject({
+      apiClient,
+      object,
+      runId,
+    });
+    if (path !== WORKSPACE_ARTIFACT_STORAGE_PATH) {
+      artifacts.push(artifact);
+      continue;
+    }
+
+    artifacts.push({
+      ...artifact,
+      kind: "directory",
+      name: "workspace",
+    });
   }
 
   return artifacts;

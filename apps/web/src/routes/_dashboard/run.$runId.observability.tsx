@@ -3,13 +3,6 @@ import type { AgentRunEventRecord } from "@mesh0/sdk/types";
 import { Button } from "@mesh0/ui/button";
 import { DataTable, DataTablePagination } from "@mesh0/ui/data-table";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@mesh0/ui/dialog";
-import { Input } from "@mesh0/ui/input";
-import {
   Select,
   SelectContent,
   SelectItem,
@@ -38,11 +31,11 @@ import {
   eventSummary,
   formatDate,
 } from "../../components/dashboard-fields";
-import { DashboardPage, DashboardState } from "../../components/dashboard-page";
+import { DashboardState } from "../../components/dashboard-page";
 import { apiClient } from "../../lib/api";
 
 type EventTypeFilter = z.infer<typeof eventTypeFilterSchema>;
-type ObservabilitySearch = z.infer<typeof observabilitySearchSchema>;
+type RunObservabilitySearch = z.infer<typeof runObservabilitySearchSchema>;
 
 const eventTypes = [
   "thread.started",
@@ -58,13 +51,6 @@ const eventTypeFilterSchema = z.union([
   z.literal("all"),
   threadEventTypeSchema,
 ]);
-const eventTypeSelectItems = [
-  { label: "all event types", value: "all" },
-  ...eventTypes.map((eventType) => ({
-    label: eventType,
-    value: eventType,
-  })),
-];
 const pageSearchSchema = z.preprocess((value) => {
   if (typeof value === "string" && value.length > 0) {
     return Number(value);
@@ -72,7 +58,6 @@ const pageSearchSchema = z.preprocess((value) => {
 
   return value;
 }, z.number().int().min(1));
-const optionalSearchStringSchema = z.string().min(1).optional();
 const optionalEventIdSearchSchema = z.preprocess((value) => {
   if (typeof value === "string" && value.length > 0) {
     return Number(value);
@@ -80,18 +65,17 @@ const optionalEventIdSearchSchema = z.preprocess((value) => {
 
   return value;
 }, z.number().int().nonnegative().optional());
-const observabilitySearchSchema = z.strictObject({
+const runObservabilitySearchSchema = z.strictObject({
   eventId: optionalEventIdSearchSchema,
   eventType: eventTypeFilterSchema,
   page: pageSearchSchema,
-  runId: optionalSearchStringSchema,
 });
-const defaultObservabilitySearch: ObservabilitySearch = {
+const defaultRunObservabilitySearch: RunObservabilitySearch = {
   eventType: "all",
   page: 1,
 };
-const fallbackObservabilitySearchSchema = observabilitySearchSchema.catch(
-  defaultObservabilitySearch,
+const fallbackRunObservabilitySearchSchema = runObservabilitySearchSchema.catch(
+  defaultRunObservabilitySearch,
 );
 
 const eventColumns: ColumnDef<AgentRunEventRecord>[] = [
@@ -101,17 +85,6 @@ const eventColumns: ColumnDef<AgentRunEventRecord>[] = [
       <CopyableValue label="Copy event ID" value={String(row.original.id)} />
     ),
     header: "Event ID",
-  },
-  {
-    accessorKey: "runId",
-    cell: ({ row }) => (
-      <CopyableValue
-        label="Copy run ID"
-        value={row.original.runId}
-        valueClassName="truncate"
-      />
-    ),
-    header: "Run ID",
   },
   {
     accessorKey: "eventType",
@@ -135,43 +108,44 @@ const eventColumns: ColumnDef<AgentRunEventRecord>[] = [
   },
 ];
 
-export const Route = createFileRoute("/_dashboard/observability")({
-  validateSearch: (search): ObservabilitySearch =>
-    fallbackObservabilitySearchSchema.parse(search),
-  beforeLoad: ({ location }) => {
+export const Route = createFileRoute("/_dashboard/run/$runId/observability")({
+  validateSearch: (search): RunObservabilitySearch =>
+    fallbackRunObservabilitySearchSchema.parse(search),
+  beforeLoad: ({ location, params }) => {
     if (location.searchStr.length === 0) {
       return;
     }
 
-    const result = observabilitySearchSchema.safeParse(
+    const result = runObservabilitySearchSchema.safeParse(
       Object.fromEntries(new URLSearchParams(location.searchStr)),
     );
     if (!result.success) {
       throw redirect({
+        params,
         replace: true,
-        search: defaultObservabilitySearch,
-        to: "/observability",
+        search: defaultRunObservabilitySearch,
+        to: "/run/$runId/observability",
       });
     }
   },
-  component: ObservabilityPage,
+  component: RunObservabilityPage,
 });
 
-function ObservabilityPage() {
+function RunObservabilityPage() {
+  const { runId } = Route.useParams();
   const search = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
   const [sorting, setSorting] = useState<SortingState>([
     { desc: true, id: "id" },
   ]);
-  const runIdFilter = search.runId ?? "";
   const eventRecordsQuery = useQuery({
     queryFn: () =>
       apiClient.runs.eventRecords({
         eventType: search.eventType === "all" ? undefined : search.eventType,
         limit: 200,
-        runId: runIdFilter.trim().length === 0 ? undefined : runIdFilter.trim(),
+        runId,
       }),
-    queryKey: ["run-event-records", runIdFilter, search.eventType],
+    queryKey: ["run-event-records", runId, search.eventType],
   });
   const eventRecords = eventRecordsQuery.data ?? [];
   const selectedEvent = useMemo(
@@ -221,7 +195,7 @@ function ObservabilityPage() {
 
     void navigate({
       replace: true,
-      search: defaultObservabilitySearch,
+      search: defaultRunObservabilitySearch,
     });
   }, [eventRecordsQuery.isLoading, navigate, search.eventId, selectedEvent]);
 
@@ -259,17 +233,6 @@ function ObservabilityPage() {
     toast.success("Events refreshed");
   }
 
-  function changeRunIdFilter(value: string) {
-    void navigate({
-      search: (previous) => ({
-        ...previous,
-        eventId: undefined,
-        page: 1,
-        runId: value.trim().length === 0 ? undefined : value,
-      }),
-    });
-  }
-
   function changeEventType(value: EventTypeFilter) {
     void navigate({
       search: (previous) => ({
@@ -285,73 +248,11 @@ function ObservabilityPage() {
     void navigate({ search: (previous) => ({ ...previous, eventId }) });
   }
 
-  function closeEvent() {
-    void navigate({
-      search: (previous) => ({ ...previous, eventId: undefined }),
-    });
-  }
-
-  function changeEventDialogOpen(open: boolean) {
-    if (!open) {
-      closeEvent();
-    }
-  }
-
   return (
-    <DashboardPage
-      action={
-        <Button
-          disabled={eventRecordsQuery.isFetching}
-          type="button"
-          onClick={() => void refreshEvents()}
-        >
-          <IconRefresh aria-hidden="true" />
-          Refresh
-        </Button>
-      }
-      description="Review normalized run event records and raw payloads for debugging."
-      title="Agent observability"
-    >
-      <div className="grid gap-4">
-        <div className="flex items-center gap-3 overflow-x-auto">
-          <Input
-            aria-label="Filter by run ID"
-            className="w-96 flex-none"
-            placeholder="Filter exact run id"
-            value={runIdFilter}
-            onChange={(event) => changeRunIdFilter(event.currentTarget.value)}
-          />
-          <Select
-            items={eventTypeSelectItems}
-            value={search.eventType}
-            onValueChange={(value) => {
-              changeEventType(
-                parseEventTypeFilter(typeof value === "string" ? value : "all"),
-              );
-            }}
-          >
-            <SelectTrigger
-              aria-label="Filter by event type"
-              className="w-72 flex-none text-[var(--mesh-white)]"
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="border border-[var(--mesh-line)] bg-[var(--mesh-panel-raised)] text-[var(--mesh-white)]">
-              <SelectItem value="all">all event types</SelectItem>
-              {eventTypes.map((eventType) => (
-                <SelectItem key={eventType} value={eventType}>
-                  {eventType}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+    <main className="grid min-h-[42rem] gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
+      <section className="grid min-h-0 content-start gap-4">
         {eventRecordsQuery.isLoading ? (
-          <DashboardState
-            description="Loading event records."
-            title="Loading events"
-            variant="loading"
-          />
+          <DashboardState title="Loading events" variant="loading" />
         ) : eventRecordsQuery.isError ? (
           <DashboardState
             description={
@@ -373,30 +274,65 @@ function ObservabilityPage() {
               label={`${eventRecords.length} events`}
               table={table}
             />
+            <EventPreview eventRecord={selectedEvent} />
           </>
         )}
-      </div>
-      {selectedEvent !== undefined && (
-        <Dialog open onOpenChange={changeEventDialogOpen}>
-          <DialogContent className="max-h-[90svh] overflow-auto sm:max-w-3xl">
-            <DialogHeader>
-              <DialogTitle className="font-serif text-3xl leading-none font-light">
-                Event detail
-              </DialogTitle>
-            </DialogHeader>
-            <EventDetail eventRecord={selectedEvent} />
-          </DialogContent>
-        </Dialog>
-      )}
-    </DashboardPage>
+      </section>
+      <aside className="grid content-start gap-3 border border-[var(--mesh-line)] bg-black/20 p-3">
+        <Button
+          disabled={eventRecordsQuery.isFetching}
+          type="button"
+          onClick={() => void refreshEvents()}
+        >
+          <IconRefresh aria-hidden="true" />
+          Refresh
+        </Button>
+        <Select
+          value={search.eventType}
+          onValueChange={(value) => {
+            changeEventType(
+              parseEventTypeFilter(typeof value === "string" ? value : "all"),
+            );
+          }}
+        >
+          <SelectTrigger
+            aria-label="Filter by event type"
+            className="w-full text-[var(--mesh-white)]"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent className="border border-[var(--mesh-line)] bg-[var(--mesh-panel-raised)] text-[var(--mesh-white)]">
+            <SelectItem value="all">all event types</SelectItem>
+            {eventTypes.map((eventType) => (
+              <SelectItem key={eventType} value={eventType}>
+                {eventType}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </aside>
+    </main>
   );
 }
 
-function EventDetail({ eventRecord }: { eventRecord: AgentRunEventRecord }) {
+function EventPreview({
+  eventRecord,
+}: {
+  eventRecord: AgentRunEventRecord | undefined;
+}) {
+  if (eventRecord === undefined) {
+    return (
+      <DashboardState
+        description="Select an event row to inspect its raw payload."
+        title="No event selected"
+      />
+    );
+  }
+
   const payload = JSON.stringify(eventRecord.event, null, 2);
 
   return (
-    <div className="grid content-start gap-4">
+    <section className="grid content-start gap-4 border-t border-[var(--mesh-line)] pt-4">
       <span className="text-sm text-[var(--mesh-muted)]">
         {eventRecord.eventType}
       </span>
@@ -421,7 +357,7 @@ function EventDetail({ eventRecord }: { eventRecord: AgentRunEventRecord }) {
         label="Copy event payload"
         value={payload}
       />
-    </div>
+    </section>
   );
 }
 

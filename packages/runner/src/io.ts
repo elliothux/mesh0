@@ -4,8 +4,8 @@ import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
 import { createHash } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
-import { appendFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { appendFile, mkdir, readFile, stat } from "node:fs/promises";
+import { basename, dirname } from "node:path";
 import type { OutputObject } from "./types";
 
 export async function teeStream(
@@ -68,64 +68,6 @@ export function createApiClient(
   return createORPCClient(link);
 }
 
-export async function createWorkspaceArtifacts({
-  log,
-  outputObjects,
-  runId,
-  workspace,
-  workspaceOutputDir,
-}: {
-  log: (message: string) => Promise<void>;
-  outputObjects: OutputObject[];
-  runId: string;
-  workspace: string;
-  workspaceOutputDir: string;
-}) {
-  const snapshotPath = join(workspaceOutputDir, "snapshot.tar.gz");
-  const snapshot = await runCommand("tar", [
-    "-czf",
-    snapshotPath,
-    "-C",
-    workspace,
-    ".",
-  ]);
-  if (snapshot.exitCode === 0) {
-    await collectIfFile(
-      outputObjects,
-      runId,
-      snapshotPath,
-      "workspace/snapshot.tar.gz",
-    );
-  } else {
-    await log(`workspace snapshot failed: ${snapshot.stderr}`);
-  }
-
-  if (!(await pathExists(join(workspace, ".git")))) {
-    return;
-  }
-
-  const diff = await runCommand("git", [
-    "-C",
-    workspace,
-    "diff",
-    "--binary",
-    "HEAD",
-  ]);
-  if (diff.exitCode !== 0) {
-    await log(`git diff failed: ${diff.stderr}`);
-    return;
-  }
-
-  const diffPath = join(workspaceOutputDir, "git-diff.patch");
-  await writeFile(diffPath, diff.stdout);
-  await collectIfFile(
-    outputObjects,
-    runId,
-    diffPath,
-    "workspace/git-diff.patch",
-  );
-}
-
 export async function collectIfFile(
   outputObjects: OutputObject[],
   runId: string,
@@ -138,7 +80,7 @@ export async function collectIfFile(
   }
 
   outputObjects.push({
-    contentType: contentTypeForObjectKey(relativeKey),
+    contentType: contentTypeForPath(relativeKey),
     digest: `sha256:${await sha256File(path)}`,
     key: `runs/${runId}/output/${relativeKey}`,
     path,
@@ -235,7 +177,7 @@ async function pathExists(path: string) {
   }
 }
 
-function writeChunk(
+export function writeChunk(
   output: ReturnType<typeof createWriteStream>,
   chunk: Uint8Array,
 ) {
@@ -249,31 +191,105 @@ function writeChunk(
   });
 }
 
-function endWritable(output: ReturnType<typeof createWriteStream>) {
+export function endWritable(output: ReturnType<typeof createWriteStream>) {
   return new Promise<void>((resolve, reject) => {
     output.end(resolve);
     output.once("error", reject);
   });
 }
 
-function contentTypeForObjectKey(key: string) {
-  if (key.endsWith(".json")) {
+export function contentTypeForPath(path: string) {
+  const name = basename(path).toLowerCase();
+
+  if (name.endsWith(".json")) {
     return "application/json";
   }
 
-  if (key.endsWith(".jsonl")) {
+  if (name.endsWith(".jsonl")) {
     return "application/x-ndjson";
   }
 
-  if (key.endsWith(".tar.gz")) {
+  if (name.endsWith(".tar.gz")) {
     return "application/gzip";
   }
 
-  if (key.endsWith(".patch")) {
+  if (name.endsWith(".patch")) {
     return "text/x-patch";
   }
 
-  return "text/plain";
+  if (name.endsWith(".svg")) {
+    return "image/svg+xml";
+  }
+
+  if (name.endsWith(".png")) {
+    return "image/png";
+  }
+
+  if (name.endsWith(".jpg") || name.endsWith(".jpeg")) {
+    return "image/jpeg";
+  }
+
+  if (name.endsWith(".gif")) {
+    return "image/gif";
+  }
+
+  if (name.endsWith(".webp")) {
+    return "image/webp";
+  }
+
+  if (name.endsWith(".mp4")) {
+    return "video/mp4";
+  }
+
+  if (name.endsWith(".webm")) {
+    return "video/webm";
+  }
+
+  if (name.endsWith(".mov")) {
+    return "video/quicktime";
+  }
+
+  if (name.endsWith(".mp3")) {
+    return "audio/mpeg";
+  }
+
+  if (name.endsWith(".wav")) {
+    return "audio/wav";
+  }
+
+  if (name.endsWith(".pdf")) {
+    return "application/pdf";
+  }
+
+  if (isTextFileName(name)) {
+    return "text/plain";
+  }
+
+  return "application/octet-stream";
+}
+
+function isTextFileName(name: string) {
+  const textExtensions = [
+    ".css",
+    ".csv",
+    ".env",
+    ".html",
+    ".js",
+    ".jsx",
+    ".md",
+    ".mdx",
+    ".mjs",
+    ".sql",
+    ".toml",
+    ".ts",
+    ".tsx",
+    ".txt",
+    ".xml",
+    ".yaml",
+    ".yml",
+  ];
+
+  return textExtensions.some((extension) => name.endsWith(extension));
 }
 
 function redact(value: string, secrets: string[]) {

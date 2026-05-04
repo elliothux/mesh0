@@ -15,6 +15,7 @@ import { parseAppEnv, type AppEnv } from "./env";
 import { isLocalHost } from "./http";
 import { createCorsHeaders, rpcHandler, withCors } from "./orpc";
 import { handleRunStorageRequest } from "./storage";
+import { handleRunWorkspaceRequest } from "./workspace";
 
 export class Mesh0RunnerSandbox extends Container<WorkerEnv> {
   override defaultPort = 3000;
@@ -43,6 +44,15 @@ export default {
     if (storageResponse !== undefined) {
       return withCors(
         mergeResponseHeaders(storageResponse, context.responseHeaders),
+        request,
+        context.env,
+      );
+    }
+
+    const workspaceResponse = await handleRunWorkspaceRequest(request, context);
+    if (workspaceResponse !== undefined) {
+      return withCors(
+        mergeResponseHeaders(workspaceResponse, context.responseHeaders),
         request,
         context.env,
       );

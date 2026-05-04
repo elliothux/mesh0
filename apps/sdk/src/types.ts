@@ -15,6 +15,7 @@ import type {
   createApiKeyResultSchema,
   downloadRunArtifactInputSchema,
   gitSkillRefSchema,
+  gitWorkspaceSourceSchema,
   listRunsInputSchema,
   mcpServerConfigSchema,
   mcpServerEnvVarSchema,
@@ -27,6 +28,7 @@ import type {
   revokeApiKeyInputSchema,
   runEventRecordsInputSchema,
   runIdInputSchema,
+  runWorkspaceSourceSchema,
   runnerRunConfigSchema,
   signOutResultSchema,
   skillRefSchema,
@@ -34,6 +36,13 @@ import type {
   userSchema,
   wellKnownSkillRefSchema,
   workspaceRefSchema,
+  workspaceSnapshotEntrySchema,
+  workspaceSnapshotFileEntrySchema,
+  workspaceSnapshotManifestSchema,
+  workspaceSnapshotSegmentSchema,
+  workspaceSourceSchema,
+  workspaceTreeEntrySchema,
+  workspaceTreeResultSchema,
 } from "./schema";
 
 export type User = z.infer<typeof userSchema>;
@@ -88,6 +97,12 @@ export type AgentSystemPrompt = z.infer<typeof agentSystemPromptSchema>;
 
 export type WorkspaceRef = z.infer<typeof workspaceRefSchema>;
 
+export type WorkspaceSource = z.infer<typeof workspaceSourceSchema>;
+
+export type GitWorkspaceSource = z.infer<typeof gitWorkspaceSourceSchema>;
+
+export type RunWorkspaceSource = z.infer<typeof runWorkspaceSourceSchema>;
+
 export type AgentRunInput = z.infer<typeof agentRunInputSchema>;
 
 export type OpenAiEnv = z.infer<typeof openAiEnvSchema>;
@@ -121,3 +136,23 @@ export type UploadRunArtifactInput = z.infer<
 export type DownloadRunArtifactInput = z.infer<
   typeof downloadRunArtifactInputSchema
 >;
+
+export type WorkspaceSnapshotSegment = z.infer<
+  typeof workspaceSnapshotSegmentSchema
+>;
+
+export type WorkspaceSnapshotEntry = z.infer<
+  typeof workspaceSnapshotEntrySchema
+>;
+
+export type WorkspaceSnapshotFileEntry = z.infer<
+  typeof workspaceSnapshotFileEntrySchema
+>;
+
+export type WorkspaceSnapshotManifest = z.infer<
+  typeof workspaceSnapshotManifestSchema
+>;
+
+export type WorkspaceTreeEntry = z.infer<typeof workspaceTreeEntrySchema>;
+
+export type WorkspaceTreeResult = z.infer<typeof workspaceTreeResultSchema>;

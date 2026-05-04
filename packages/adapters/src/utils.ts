@@ -26,11 +26,7 @@ export function buildArtifactRef(object: StoredRunObject): ArtifactRef {
 }
 
 export function kindForArtifactPath(path: string): ArtifactRef["kind"] {
-  if (path.endsWith("workspace/git-diff.patch")) {
-    return "patch";
-  }
-
-  if (path.endsWith("workspace/snapshot.tar.gz")) {
+  if (path.endsWith("workspace/manifest.json")) {
     return "directory";
   }
 

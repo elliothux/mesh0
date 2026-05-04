@@ -1,7 +1,7 @@
 import { DockerSandbox } from "@mesh0/adapters/sandbox/docker-runner";
 import { FsRunStorageProvider } from "@mesh0/adapters/storage/fs";
-import { buildArtifactRef } from "@mesh0/adapters/utils";
 import { createDb } from "@mesh0/db";
+import { buildRunStorageUri } from "@mesh0/sdk/artifacts";
 import { AUTH_ACCESS_TOKEN_COOKIE } from "@mesh0/sdk/auth";
 import type { AgentRunInput } from "@mesh0/sdk/types";
 import { Services } from "@mesh0/services";
@@ -19,6 +19,7 @@ import {
   withCors,
 } from "../../apps/api/src/orpc";
 import { handleRunStorageRequest } from "../../apps/api/src/storage";
+import { handleRunWorkspaceRequest } from "../../apps/api/src/workspace";
 import { createMemoryD1 } from "./memory-d1";
 
 const MIGRATIONS_DIR = resolve(import.meta.dir, "../../packages/db/migrations");
@@ -174,15 +175,56 @@ export async function startLocalDashboardApi() {
     ],
     runId: completedRun.id,
   });
-  const artifactObject = await storage.put({
-    body: "dashboard artifact ok",
-    contentType: "text/plain",
-    path: "output/dashboard-artifact.txt",
+  const artifactText = "dashboard artifact ok";
+  await storage.put({
+    body: artifactText,
+    contentType: "application/octet-stream",
+    path: "output/workspace/packs/pack-00000.bin",
+    runId: completedRun.id,
+  });
+  const workspaceManifestObject = await storage.put({
+    body: JSON.stringify(
+      {
+        createdAt: now,
+        entries: [
+          {
+            mode: 33188,
+            path: "dashboard-artifact.txt",
+            type: "file",
+            contentType: "text/plain",
+            digest: "sha256:dashboard-artifact",
+            segments: [
+              {
+                key: "output/workspace/packs/pack-00000.bin",
+                length: artifactText.length,
+                offset: 0,
+              },
+            ],
+            size: artifactText.length,
+          },
+        ],
+        root: "workspace",
+        version: 1,
+      },
+      null,
+      2,
+    ),
+    contentType: "application/json",
+    path: "output/workspace/manifest.json",
     runId: completedRun.id,
   });
   await services.run.complete({
     completion: {
-      artifacts: [buildArtifactRef(artifactObject)],
+      artifacts: [
+        {
+          contentType: workspaceManifestObject.contentType,
+          id: workspaceManifestObject.key,
+          kind: "directory",
+          name: "workspace",
+          runId: workspaceManifestObject.runId,
+          uri: buildRunStorageUri(workspaceManifestObject),
+        },
+      ],
       lastMessage: "dashboard completed ok",
       status: "completed",
     },
@@ -254,7 +296,7 @@ export async function startLocalDashboardApi() {
     apiUrl: `http://127.0.0.1:${server.port}`,
     seed: {
       activeKeyName: activeKey.apiKey.name,
-      artifactPath: "output/dashboard-artifact.txt",
+      artifactPath: "dashboard-artifact.txt",
       completedRunId: completedRun.id,
       eventType: "item.completed",
       failedRunId: failedRun.id,
@@ -280,6 +322,15 @@ async function handleApiRequest(request: Request, context: Context) {
   if (storageResponse !== undefined) {
     return withCors(
       mergeResponseHeaders(storageResponse, context.responseHeaders),
+      request,
+      context.env,
+    );
+  }
+
+  const workspaceResponse = await handleRunWorkspaceRequest(request, context);
+  if (workspaceResponse !== undefined) {
+    return withCors(
+      mergeResponseHeaders(workspaceResponse, context.responseHeaders),
       request,
       context.env,
     );

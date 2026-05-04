@@ -29,7 +29,7 @@ type AnchorNavItem = {
   label: string;
 };
 
-type DashboardRouteTo = "/artifacts" | "/keys" | "/observability" | "/runs";
+type DashboardRouteTo = "/keys" | "/runs";
 
 type RouteNavItem = {
   label: string;
@@ -277,20 +277,6 @@ function DashboardNavLink({
         data-active={dataActive}
         preload="render"
         search={{ page: 1, status: "all" }}
-        to={to}
-      >
-        {label}
-      </Link>
-    );
-  }
-
-  if (to === "/observability") {
-    return (
-      <Link
-        className={className}
-        data-active={dataActive}
-        preload="render"
-        search={{ eventType: "all", page: 1 }}
         to={to}
       >
         {label}

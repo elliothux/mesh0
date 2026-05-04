@@ -17,6 +17,7 @@ import type {
   ListRunsInput,
   RunEventRecordsInput,
   RunIdInput,
+  RunWorkspaceSource,
   RunnerRunConfig,
 } from "@mesh0/sdk/types";
 import type { ThreadEvent } from "@openai/codex-sdk";
@@ -49,6 +50,8 @@ export class RunService {
   }
 
   async create(userId: string, input: AgentRunInput): Promise<AgentRunRecord> {
+    await this.#validateWorkspaceSource({ input, userId });
+
     const runId = `run_${nanoid()}`;
     const runnerToken = nanoid(48);
     const record: AgentRunRecord = {
@@ -96,6 +99,24 @@ export class RunService {
 
   async getInput({ runId }: RunIdInput): Promise<RunnerRunConfig> {
     return buildRunnerRunConfig(await this.#getStoredRun(runId));
+  }
+
+  async workspaceSource({
+    runId,
+  }: RunIdInput): Promise<RunWorkspaceSource | undefined> {
+    const run = await this.#getStoredRun(runId);
+    const source = run.input.workspace?.source;
+    if (source?.type !== "run") {
+      return undefined;
+    }
+
+    const sourceRun = await this.#getStoredRun(source.runId);
+    if (sourceRun.userId !== run.userId) {
+      throw new RunNotFoundError();
+    }
+
+    requireWorkspaceArtifact(sourceRun);
+    return source;
   }
 
   async authenticateRunner({
@@ -343,6 +364,25 @@ export class RunService {
       });
     }
   }
+
+  async #validateWorkspaceSource({
+    input,
+    userId,
+  }: {
+    input: AgentRunInput;
+    userId: string;
+  }) {
+    const source = input.workspace?.source;
+    if (source?.type !== "run") {
+      return;
+    }
+
+    const sourceRun = await this.#getScopedRun({
+      runId: source.runId,
+      userId,
+    });
+    requireWorkspaceArtifact(sourceRun);
+  }
 }
 
 function buildRunnerRunConfig(run: AgentRunRecord): RunnerRunConfig {
@@ -355,6 +395,18 @@ function buildRunnerRunConfig(run: AgentRunRecord): RunnerRunConfig {
     skills: run.input.skills,
     workspace: run.input.workspace,
   };
+}
+
+function requireWorkspaceArtifact(run: AgentRunRecord) {
+  const hasWorkspaceArtifact = run.artifacts.some(
+    (artifact) =>
+      artifact.kind === "directory" && artifact.name === "workspace",
+  );
+  if (!hasWorkspaceArtifact) {
+    throw new Error(
+      `Workspace source run has no workspace artifact: ${run.id}`,
+    );
+  }
 }
 
 function parseRun(run: AgentRun) {

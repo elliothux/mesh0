@@ -13,6 +13,10 @@ const httpUrlStringSchema = urlStringSchema.refine(
   },
   { message: "URL must use http or https" },
 );
+const workspacePathSchema = nonEmptyStringSchema.refine(
+  (value) => !value.split("/").includes(".."),
+  { message: "Workspace path must not contain .. segments" },
+);
 
 export const MAX_ARTIFACT_UPLOAD_BYTES = 100_000_000;
 
@@ -139,13 +143,26 @@ export const agentSystemPromptSchema = z.union([
   z.strictObject({ replace: nonEmptyStringSchema }),
 ]);
 
+export const gitWorkspaceSourceSchema = z.strictObject({
+  type: z.literal("git"),
+  url: nonEmptyStringSchema,
+  ref: nonEmptyStringSchema.optional(),
+});
+
+export const runWorkspaceSourceSchema = z.strictObject({
+  type: z.literal("run"),
+  runId: nonEmptyStringSchema,
+  path: workspacePathSchema.optional(),
+});
+
+export const workspaceSourceSchema = z.discriminatedUnion("type", [
+  gitWorkspaceSourceSchema,
+  runWorkspaceSourceSchema,
+]);
+
 export const workspaceRefSchema = z.strictObject({
-  git: z
-    .strictObject({
-      url: nonEmptyStringSchema,
-      ref: nonEmptyStringSchema.optional(),
-    })
-    .optional(),
+  source: workspaceSourceSchema.optional(),
+  ignorePatterns: z.array(nonEmptyStringSchema).optional(),
 });
 
 export const openAiEnvSchema = z
@@ -177,8 +194,66 @@ export const artifactRefSchema = z.strictObject({
   id: nonEmptyStringSchema,
   runId: nonEmptyStringSchema,
   kind: z.enum(["file", "directory", "patch", "json", "text", "log"]),
+  name: nonEmptyStringSchema.optional(),
   uri: nonEmptyStringSchema,
   contentType: nonEmptyStringSchema.optional(),
+});
+
+export const workspaceSnapshotSegmentSchema = z.strictObject({
+  key: nonEmptyStringSchema,
+  offset: z.number().int().min(0),
+  length: z.number().int().min(0),
+});
+
+const workspaceSnapshotBaseEntrySchema = z.strictObject({
+  mode: z.number().int().min(0),
+  path: z.string(),
+});
+
+export const workspaceSnapshotDirectoryEntrySchema =
+  workspaceSnapshotBaseEntrySchema.extend({
+    type: z.literal("dir"),
+  });
+
+export const workspaceSnapshotFileEntrySchema =
+  workspaceSnapshotBaseEntrySchema.extend({
+    contentType: nonEmptyStringSchema.optional(),
+    digest: nonEmptyStringSchema,
+    segments: z.array(workspaceSnapshotSegmentSchema),
+    size: z.number().int().min(0),
+    type: z.literal("file"),
+  });
+
+export const workspaceSnapshotSymlinkEntrySchema =
+  workspaceSnapshotBaseEntrySchema.extend({
+    target: z.string(),
+    type: z.literal("symlink"),
+  });
+
+export const workspaceSnapshotEntrySchema = z.discriminatedUnion("type", [
+  workspaceSnapshotDirectoryEntrySchema,
+  workspaceSnapshotFileEntrySchema,
+  workspaceSnapshotSymlinkEntrySchema,
+]);
+
+export const workspaceSnapshotManifestSchema = z.strictObject({
+  createdAt: nonEmptyStringSchema,
+  entries: z.array(workspaceSnapshotEntrySchema),
+  root: z.literal("workspace"),
+  version: z.literal(1),
+});
+
+export const workspaceTreeEntrySchema = z.strictObject({
+  contentType: nonEmptyStringSchema.optional(),
+  mode: z.number().int().min(0).optional(),
+  path: z.string(),
+  size: z.number().int().min(0).optional(),
+  target: z.string().optional(),
+  type: z.enum(["dir", "file", "symlink"]),
+});
+
+export const workspaceTreeResultSchema = z.strictObject({
+  entries: z.array(workspaceTreeEntrySchema),
 });
 
 export const agentRunRecordSchema = z.strictObject({

@@ -17,6 +17,7 @@
 - Lint: `bun run lint`
 - Typecheck: `bun run typecheck`
 - Check: `bun run check`
+- Runner build: `bun run --cwd packages/runner build`
 
 ## Hard Rules
 
@@ -130,6 +131,7 @@ Rules below are invariants. Violating any of these creates bugs or maintenance r
 
 - After each code change: clean up dead code -> run `bun run typecheck` and `bun run lint` -> fix errors.
 - Documentation-only and non-code edits do not require `bun run typecheck` or `bun run lint`.
+- After changing runner runtime code under `packages/runner/src`, run `bun run --cwd packages/runner build` so `packages/runner/dist` and the local `mesh0/runner:local` image match the source.
 - Split files before they exceed 800 lines.
 - Trace issues to root cause; avoid fallback-only fixes.
 - After each turn, reflect on the result:

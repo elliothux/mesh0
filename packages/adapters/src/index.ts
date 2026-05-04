@@ -37,6 +37,11 @@ export interface RunStorageGet {
   runId: string;
 }
 
+export interface RunStorageGetRange extends RunStorageGet {
+  length: number;
+  offset: number;
+}
+
 export interface RunStorageObject {
   body: ReadableStream<Uint8Array>;
   contentType?: string;
@@ -54,5 +59,6 @@ export interface StoredRunObject {
 
 export interface RunStorage {
   get(input: RunStorageGet): Promise<RunStorageObject | undefined>;
+  getRange(input: RunStorageGetRange): Promise<RunStorageObject | undefined>;
   put(input: RunStoragePut): Promise<StoredRunObject>;
 }

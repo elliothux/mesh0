@@ -5,6 +5,7 @@ import { z } from "zod";
 import type {
   RunStorage,
   RunStorageGet,
+  RunStorageGetRange,
   RunStorageObject,
   RunStoragePut,
   StoredRunObject,
@@ -65,6 +66,33 @@ export class FsRunStorageProvider implements RunStorage {
 
     return {
       body: Bun.file(filePath).stream(),
+      contentType: await readContentType(filePath),
+      key,
+      path: normalizedPath,
+      runId,
+    };
+  }
+
+  async getRange({
+    length,
+    offset,
+    path,
+    runId,
+  }: RunStorageGetRange): Promise<RunStorageObject | undefined> {
+    const normalizedPath = normalizeRunStoragePath(path);
+    const key = normalizeRunStoragePath(
+      buildRunStorageKey({ path: normalizedPath, runId }),
+    );
+    const filePath = this.#filePath(key);
+
+    if (!(await fileExists(filePath))) {
+      return undefined;
+    }
+
+    return {
+      body: Bun.file(filePath)
+        .slice(offset, offset + length)
+        .stream(),
       contentType: await readContentType(filePath),
       key,
       path: normalizedPath,

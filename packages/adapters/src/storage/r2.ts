@@ -3,6 +3,7 @@ import { normalizeRunStoragePath } from "@mesh0/sdk/artifacts";
 import type {
   RunStorage,
   RunStorageGet,
+  RunStorageGetRange,
   RunStorageObject,
   RunStoragePut,
   StoredRunObject,
@@ -46,6 +47,30 @@ export class R2Storage implements RunStorage {
     const normalizedPath = normalizeRunStoragePath(path);
     const key = buildRunStorageKey({ path: normalizedPath, runId });
     const object = await this.#bucket.get(key);
+    if (object === null) {
+      return undefined;
+    }
+
+    return {
+      body: toByteStream(object.body),
+      contentType: object.httpMetadata?.contentType,
+      key,
+      path: normalizedPath,
+      runId,
+    };
+  }
+
+  async getRange({
+    length,
+    offset,
+    path,
+    runId,
+  }: RunStorageGetRange): Promise<RunStorageObject | undefined> {
+    const normalizedPath = normalizeRunStoragePath(path);
+    const key = buildRunStorageKey({ path: normalizedPath, runId });
+    const object = await this.#bucket.get(key, {
+      range: { length, offset },
+    });
     if (object === null) {
       return undefined;
     }

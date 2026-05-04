@@ -11,8 +11,6 @@ import { orpc } from "../../lib/api";
 
 const dashboardTabs = [
   { label: "Runs", to: "/runs" },
-  { label: "Artifacts", to: "/artifacts" },
-  { label: "Observability", to: "/observability" },
   { label: "API Keys", to: "/keys" },
 ] satisfies SiteHeaderItem[];
 const dashboardAccountPlaceholder = (

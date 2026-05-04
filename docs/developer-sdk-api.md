@@ -7,7 +7,7 @@
 ```ts
 const run = await mesh0
   .agent()
-  .workspace({ git: { url, ref: "main" } })
+  .workspace({ source: { type: "git", url, ref: "main" } })
   .mcp({
     github: {
       url: "https://api.githubcopilot.com/mcp/",
@@ -37,6 +37,24 @@ const run = await mesh0
     OPENAI_MODEL,
   })
   .prompt("Use $code-review to review PR #123.")
+  .start();
+```
+
+复用另一个 run 的 workspace：
+
+```ts
+const run = await mesh0
+  .agent()
+  .workspace({
+    source: { type: "run", runId: "run_previous", path: "packages/api" },
+    ignorePatterns: ["tmp/"],
+  })
+  .env({
+    OPENAI_API_KEY,
+    OPENAI_BASE_URL,
+    OPENAI_MODEL,
+  })
+  .prompt("Continue from the previous workspace.")
   .start();
 ```
 
@@ -404,8 +422,10 @@ runs/<runId>/output/
         payloads/
         state.json
   workspace/
-    snapshot.tar.gz
-    git-diff.patch
+    manifest.json
+    packs/
+      pack-00000.bin
+      pack-00001.bin
   mesh0/
     runner.log
     output-manifest.json
@@ -426,7 +446,7 @@ codex exec --json
 process completed or failed
   -> runner finalize
   -> upload raw codex stdout/stderr/session/trace files
-  -> upload final /workspace snapshot
+  -> upload final /workspace manifest and content packs
   -> write mesh0/output-manifest.json
   -> mark run completed or failed
 ```
@@ -450,8 +470,10 @@ Codex metadata 不重新组装成 Mesh0 schema。直接使用 rollout 里的原�
 
 Workspace 没有对应的 Codex raw artifact。runner 只保存最终文件系统状态：
 
-- `workspace/snapshot.tar.gz`：完成或失败时的 `/workspace` 快照。
-- `workspace/git-diff.patch`：可选，方便 UI 展示；不是权威数据。
+- `workspace/manifest.json`：完成或失败时的 `/workspace` 文件树、mode、size、digest、content type 和 pack segment 引用。
+- `workspace/packs/*.bin`：小文件和普通文件内容的连续 pack。UI 预览或下载单文件时，API 根据 manifest 做 range read。
+
+Workspace collect 会合并 root 和嵌套 `.gitignore`，并内置忽略 `.git/`、`node_modules/`、常见缓存和构建目录。SDK 可以通过 `workspace.ignorePatterns` 追加忽略规则。
 
 Mesh0 自己只写最小运行清单：
 
@@ -484,7 +506,11 @@ raw Codex 产物可能包含 prompt、模型输出、工具参数、终端输出
       "digest": "sha256:..."
     },
     {
-      "key": "runs/run_123/output/workspace/snapshot.tar.gz",
+      "key": "runs/run_123/output/workspace/manifest.json",
+      "digest": "sha256:..."
+    },
+    {
+      "key": "runs/run_123/output/workspace/packs/pack-00000.bin",
       "digest": "sha256:..."
     }
   ]

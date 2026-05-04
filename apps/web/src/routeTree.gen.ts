@@ -12,9 +12,11 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as DashboardRouteRouteImport } from './routes/_dashboard/route'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as DashboardRunsRouteImport } from './routes/_dashboard/runs'
-import { Route as DashboardObservabilityRouteImport } from './routes/_dashboard/observability'
 import { Route as DashboardKeysRouteImport } from './routes/_dashboard/keys'
-import { Route as DashboardArtifactsRouteImport } from './routes/_dashboard/artifacts'
+import { Route as DashboardRunRunIdRouteImport } from './routes/_dashboard/run.$runId'
+import { Route as DashboardRunRunIdIndexRouteImport } from './routes/_dashboard/run.$runId.index'
+import { Route as DashboardRunRunIdObservabilityRouteImport } from './routes/_dashboard/run.$runId.observability'
+import { Route as DashboardRunRunIdArtifactsRouteImport } from './routes/_dashboard/run.$runId.artifacts'
 
 const DashboardRouteRoute = DashboardRouteRouteImport.update({
   id: '/_dashboard',
@@ -30,58 +32,90 @@ const DashboardRunsRoute = DashboardRunsRouteImport.update({
   path: '/runs',
   getParentRoute: () => DashboardRouteRoute,
 } as any)
-const DashboardObservabilityRoute = DashboardObservabilityRouteImport.update({
-  id: '/observability',
-  path: '/observability',
-  getParentRoute: () => DashboardRouteRoute,
-} as any)
 const DashboardKeysRoute = DashboardKeysRouteImport.update({
   id: '/keys',
   path: '/keys',
   getParentRoute: () => DashboardRouteRoute,
 } as any)
-const DashboardArtifactsRoute = DashboardArtifactsRouteImport.update({
-  id: '/artifacts',
-  path: '/artifacts',
+const DashboardRunRunIdRoute = DashboardRunRunIdRouteImport.update({
+  id: '/run/$runId',
+  path: '/run/$runId',
   getParentRoute: () => DashboardRouteRoute,
 } as any)
+const DashboardRunRunIdIndexRoute = DashboardRunRunIdIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => DashboardRunRunIdRoute,
+} as any)
+const DashboardRunRunIdObservabilityRoute =
+  DashboardRunRunIdObservabilityRouteImport.update({
+    id: '/observability',
+    path: '/observability',
+    getParentRoute: () => DashboardRunRunIdRoute,
+  } as any)
+const DashboardRunRunIdArtifactsRoute =
+  DashboardRunRunIdArtifactsRouteImport.update({
+    id: '/artifacts',
+    path: '/artifacts',
+    getParentRoute: () => DashboardRunRunIdRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/artifacts': typeof DashboardArtifactsRoute
   '/keys': typeof DashboardKeysRoute
-  '/observability': typeof DashboardObservabilityRoute
   '/runs': typeof DashboardRunsRoute
+  '/run/$runId': typeof DashboardRunRunIdRouteWithChildren
+  '/run/$runId/artifacts': typeof DashboardRunRunIdArtifactsRoute
+  '/run/$runId/observability': typeof DashboardRunRunIdObservabilityRoute
+  '/run/$runId/': typeof DashboardRunRunIdIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/artifacts': typeof DashboardArtifactsRoute
   '/keys': typeof DashboardKeysRoute
-  '/observability': typeof DashboardObservabilityRoute
   '/runs': typeof DashboardRunsRoute
+  '/run/$runId/artifacts': typeof DashboardRunRunIdArtifactsRoute
+  '/run/$runId/observability': typeof DashboardRunRunIdObservabilityRoute
+  '/run/$runId': typeof DashboardRunRunIdIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_dashboard': typeof DashboardRouteRouteWithChildren
-  '/_dashboard/artifacts': typeof DashboardArtifactsRoute
   '/_dashboard/keys': typeof DashboardKeysRoute
-  '/_dashboard/observability': typeof DashboardObservabilityRoute
   '/_dashboard/runs': typeof DashboardRunsRoute
+  '/_dashboard/run/$runId': typeof DashboardRunRunIdRouteWithChildren
+  '/_dashboard/run/$runId/artifacts': typeof DashboardRunRunIdArtifactsRoute
+  '/_dashboard/run/$runId/observability': typeof DashboardRunRunIdObservabilityRoute
+  '/_dashboard/run/$runId/': typeof DashboardRunRunIdIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/artifacts' | '/keys' | '/observability' | '/runs'
+  fullPaths:
+    | '/'
+    | '/keys'
+    | '/runs'
+    | '/run/$runId'
+    | '/run/$runId/artifacts'
+    | '/run/$runId/observability'
+    | '/run/$runId/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/artifacts' | '/keys' | '/observability' | '/runs'
+  to:
+    | '/'
+    | '/keys'
+    | '/runs'
+    | '/run/$runId/artifacts'
+    | '/run/$runId/observability'
+    | '/run/$runId'
   id:
     | '__root__'
     | '/'
     | '/_dashboard'
-    | '/_dashboard/artifacts'
     | '/_dashboard/keys'
-    | '/_dashboard/observability'
     | '/_dashboard/runs'
+    | '/_dashboard/run/$runId'
+    | '/_dashboard/run/$runId/artifacts'
+    | '/_dashboard/run/$runId/observability'
+    | '/_dashboard/run/$runId/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -112,13 +146,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardRunsRouteImport
       parentRoute: typeof DashboardRouteRoute
     }
-    '/_dashboard/observability': {
-      id: '/_dashboard/observability'
-      path: '/observability'
-      fullPath: '/observability'
-      preLoaderRoute: typeof DashboardObservabilityRouteImport
-      parentRoute: typeof DashboardRouteRoute
-    }
     '/_dashboard/keys': {
       id: '/_dashboard/keys'
       path: '/keys'
@@ -126,28 +153,62 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardKeysRouteImport
       parentRoute: typeof DashboardRouteRoute
     }
-    '/_dashboard/artifacts': {
-      id: '/_dashboard/artifacts'
-      path: '/artifacts'
-      fullPath: '/artifacts'
-      preLoaderRoute: typeof DashboardArtifactsRouteImport
+    '/_dashboard/run/$runId': {
+      id: '/_dashboard/run/$runId'
+      path: '/run/$runId'
+      fullPath: '/run/$runId'
+      preLoaderRoute: typeof DashboardRunRunIdRouteImport
       parentRoute: typeof DashboardRouteRoute
+    }
+    '/_dashboard/run/$runId/': {
+      id: '/_dashboard/run/$runId/'
+      path: '/'
+      fullPath: '/run/$runId/'
+      preLoaderRoute: typeof DashboardRunRunIdIndexRouteImport
+      parentRoute: typeof DashboardRunRunIdRoute
+    }
+    '/_dashboard/run/$runId/observability': {
+      id: '/_dashboard/run/$runId/observability'
+      path: '/observability'
+      fullPath: '/run/$runId/observability'
+      preLoaderRoute: typeof DashboardRunRunIdObservabilityRouteImport
+      parentRoute: typeof DashboardRunRunIdRoute
+    }
+    '/_dashboard/run/$runId/artifacts': {
+      id: '/_dashboard/run/$runId/artifacts'
+      path: '/artifacts'
+      fullPath: '/run/$runId/artifacts'
+      preLoaderRoute: typeof DashboardRunRunIdArtifactsRouteImport
+      parentRoute: typeof DashboardRunRunIdRoute
     }
   }
 }
 
+interface DashboardRunRunIdRouteChildren {
+  DashboardRunRunIdArtifactsRoute: typeof DashboardRunRunIdArtifactsRoute
+  DashboardRunRunIdObservabilityRoute: typeof DashboardRunRunIdObservabilityRoute
+  DashboardRunRunIdIndexRoute: typeof DashboardRunRunIdIndexRoute
+}
+
+const DashboardRunRunIdRouteChildren: DashboardRunRunIdRouteChildren = {
+  DashboardRunRunIdArtifactsRoute: DashboardRunRunIdArtifactsRoute,
+  DashboardRunRunIdObservabilityRoute: DashboardRunRunIdObservabilityRoute,
+  DashboardRunRunIdIndexRoute: DashboardRunRunIdIndexRoute,
+}
+
+const DashboardRunRunIdRouteWithChildren =
+  DashboardRunRunIdRoute._addFileChildren(DashboardRunRunIdRouteChildren)
+
 interface DashboardRouteRouteChildren {
-  DashboardArtifactsRoute: typeof DashboardArtifactsRoute
   DashboardKeysRoute: typeof DashboardKeysRoute
-  DashboardObservabilityRoute: typeof DashboardObservabilityRoute
   DashboardRunsRoute: typeof DashboardRunsRoute
+  DashboardRunRunIdRoute: typeof DashboardRunRunIdRouteWithChildren
 }
 
 const DashboardRouteRouteChildren: DashboardRouteRouteChildren = {
-  DashboardArtifactsRoute: DashboardArtifactsRoute,
   DashboardKeysRoute: DashboardKeysRoute,
-  DashboardObservabilityRoute: DashboardObservabilityRoute,
   DashboardRunsRoute: DashboardRunsRoute,
+  DashboardRunRunIdRoute: DashboardRunRunIdRouteWithChildren,
 }
 
 const DashboardRouteRouteWithChildren = DashboardRouteRoute._addFileChildren(

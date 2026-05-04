@@ -1,8 +1,18 @@
 import { createMesh0, type AgentRunHandle } from "@mesh0/sdk";
-import type { OpenAiEnv } from "@mesh0/sdk/types";
+import { parseRunStoragePathname } from "@mesh0/sdk/artifacts";
+import type { ArtifactRef, OpenAiEnv } from "@mesh0/sdk/types";
 import { z } from "zod";
 
 const LAST_MESSAGE_PATH = "output/codex/last-message.txt";
+const RUNNER_LOG_PATH = "output/mesh0/runner.log";
+const REQUIRED_ARTIFACT_PATHS = [
+  "output/codex/exec.jsonl",
+  "output/codex/last-message.txt",
+  "output/codex/stderr.log",
+  "output/mesh0/output-manifest.json",
+  RUNNER_LOG_PATH,
+  "output/workspace/manifest.json",
+];
 
 const smokeEnvSchema = z.strictObject({
   MESH0_API_KEY: z.string().min(1).optional(),
@@ -90,12 +100,16 @@ export async function runSdkUserFlow({
     result.lastMessage?.includes(expectedText),
     `Unexpected last message: ${result.lastMessage ?? ""}`,
   );
-  assert(
-    result.artifacts.some((artifact) =>
-      artifact.uri.startsWith(`/runs/${run.id}/storage/output/`),
-    ),
-    `Expected runner artifacts to be stored: ${JSON.stringify(result.artifacts)}`,
-  );
+  const artifactPaths = parseArtifactPaths({
+    artifacts: result.artifacts,
+    runId: run.id,
+  });
+  for (const path of REQUIRED_ARTIFACT_PATHS) {
+    assert(
+      artifactPaths.includes(path),
+      `Expected artifact ${path}, got ${JSON.stringify(result.artifacts)}`,
+    );
+  }
 
   const lastMessageResponse = await run.downloadArtifact(LAST_MESSAGE_PATH);
   assert(
@@ -107,6 +121,13 @@ export async function runSdkUserFlow({
   assert(
     downloadedLastMessage.includes(expectedText),
     `Unexpected downloaded artifact: ${downloadedLastMessage}`,
+  );
+
+  const runnerLog = await (await run.downloadArtifact(RUNNER_LOG_PATH)).text();
+  assert(
+    runnerLog.includes(`run ${run.id} started`) &&
+      runnerLog.includes(`run ${run.id} completed`),
+    `Unexpected runner log: ${runnerLog}`,
   );
 
   let eventCount = 0;
@@ -170,4 +191,26 @@ async function readOptionalArtifact(run: AgentRunHandle, path: string) {
   } catch {
     return "";
   }
+}
+
+function parseArtifactPaths({
+  artifacts,
+  runId,
+}: {
+  artifacts: ArtifactRef[];
+  runId: string;
+}) {
+  return artifacts.map((artifact) => {
+    const { pathname } = new URL(artifact.uri, "http://localhost");
+    const parsed = parseRunStoragePathname(pathname);
+    assert(
+      parsed !== undefined,
+      `Expected run storage artifact URI, got ${artifact.uri}`,
+    );
+    assert(
+      parsed.runId === runId,
+      `Expected artifact for ${runId}, got ${parsed.runId}`,
+    );
+    return parsed.path;
+  });
 }
