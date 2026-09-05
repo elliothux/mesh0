@@ -1,4 +1,10 @@
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import {
+  index,
+  integer,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from "drizzle-orm/sqlite-core";
 
 export const appStatus = sqliteTable("app_status", {
   key: text("key").primaryKey(),
@@ -54,6 +60,66 @@ export const agentRuns = sqliteTable(
       table.userId,
       table.createdAt,
     ),
+  ],
+);
+
+export const agents = sqliteTable(
+  "agents",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    config: text("config").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("agents_user_id_name_idx").on(table.userId, table.name),
+    index("agents_user_id_updated_at_idx").on(table.userId, table.updatedAt),
+  ],
+);
+
+export const crons = sqliteTable(
+  "crons",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    expression: text("expression").notNull(),
+    invalidateAt: text("invalidate_at"),
+    definition: text("definition").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+    lastTriggeredAt: text("last_triggered_at"),
+    lastRunId: text("last_run_id"),
+    deletedAt: text("deleted_at"),
+  },
+  (table) => [
+    index("crons_user_id_updated_at_idx").on(table.userId, table.updatedAt),
+  ],
+);
+
+export const webhooks = sqliteTable(
+  "webhooks",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    uid: text("uid").notNull(),
+    name: text("name").notNull(),
+    definition: text("definition").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+    deletedAt: text("deleted_at"),
+  },
+  (table) => [
+    uniqueIndex("webhooks_uid_name_idx").on(table.uid, table.name),
+    index("webhooks_user_id_updated_at_idx").on(table.userId, table.updatedAt),
   ],
 );
 

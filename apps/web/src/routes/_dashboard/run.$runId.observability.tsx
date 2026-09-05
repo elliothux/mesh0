@@ -9,7 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@mesh0/ui/select";
-import { IconRefresh } from "@tabler/icons-react";
+import { IconActivity, IconRefresh } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import {
@@ -21,7 +21,7 @@ import {
   type PaginationState,
   type SortingState,
 } from "@tanstack/react-table";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 import {
@@ -32,9 +32,10 @@ import {
   formatDate,
 } from "../../components/dashboard-fields";
 import { DashboardState } from "../../components/dashboard-page";
-import { apiClient } from "../../lib/api";
+import { apiClient, queryClient } from "../../lib/api";
 
 type EventTypeFilter = z.infer<typeof eventTypeFilterSchema>;
+type LiveStatus = "idle" | "connecting" | "live" | "ended" | "error";
 type RunObservabilitySearch = z.infer<typeof runObservabilitySearchSchema>;
 
 const eventTypes = [
@@ -138,6 +139,14 @@ function RunObservabilityPage() {
   const [sorting, setSorting] = useState<SortingState>([
     { desc: true, id: "id" },
   ]);
+  const [liveEnabled, setLiveEnabled] = useState(false);
+  const [liveError, setLiveError] = useState<string | undefined>();
+  const [liveRecords, setLiveRecords] = useState<AgentRunEventRecord[]>([]);
+  const [liveStatus, setLiveStatus] = useState<LiveStatus>("idle");
+  const runQuery = useQuery({
+    queryFn: () => apiClient.runs.get({ runId }),
+    queryKey: ["run", runId],
+  });
   const eventRecordsQuery = useQuery({
     queryFn: () =>
       apiClient.runs.eventRecords({
@@ -147,7 +156,12 @@ function RunObservabilityPage() {
       }),
     queryKey: ["run-event-records", runId, search.eventType],
   });
-  const eventRecords = eventRecordsQuery.data ?? [];
+  const eventRecords = useMemo(
+    () => mergeEventRecords(eventRecordsQuery.data ?? [], liveRecords),
+    [eventRecordsQuery.data, liveRecords],
+  );
+  const canLive =
+    runQuery.data?.status === "queued" || runQuery.data?.status === "running";
   const selectedEvent = useMemo(
     () =>
       search.eventId === undefined
@@ -183,6 +197,65 @@ function RunObservabilityPage() {
     onSortingChange: setSorting,
     state: { pagination, sorting },
   });
+
+  useEffect(() => {
+    setLiveError(undefined);
+    setLiveRecords([]);
+  }, [runId, search.eventType]);
+
+  useEffect(() => {
+    if (!liveEnabled) {
+      return;
+    }
+
+    const abortController = new AbortController();
+
+    async function streamLiveEvents() {
+      setLiveError(undefined);
+      setLiveStatus("connecting");
+
+      try {
+        const stream = await apiClient.runs.liveEvents(
+          {
+            eventType:
+              search.eventType === "all" ? undefined : search.eventType,
+            runId,
+          },
+          { signal: abortController.signal },
+        );
+
+        setLiveStatus("live");
+        for await (const record of stream) {
+          if (abortController.signal.aborted) {
+            return;
+          }
+
+          setLiveRecords((records) => appendLiveRecord(records, record));
+        }
+
+        if (abortController.signal.aborted) {
+          return;
+        }
+
+        setLiveStatus("ended");
+        void queryClient.invalidateQueries({
+          queryKey: ["run-event-records", runId, search.eventType],
+        });
+        void queryClient.invalidateQueries({ queryKey: ["run", runId] });
+      } catch (error) {
+        if (abortController.signal.aborted) {
+          return;
+        }
+
+        setLiveError(error instanceof Error ? error.message : String(error));
+        setLiveStatus("error");
+      }
+    }
+
+    void streamLiveEvents();
+
+    return () => abortController.abort();
+  }, [liveEnabled, runId, search.eventType]);
 
   useEffect(() => {
     if (eventRecordsQuery.isLoading || search.eventId === undefined) {
@@ -248,6 +321,17 @@ function RunObservabilityPage() {
     void navigate({ search: (previous) => ({ ...previous, eventId }) });
   }
 
+  function toggleLiveEvents() {
+    if (liveEnabled) {
+      setLiveEnabled(false);
+      setLiveError(undefined);
+      setLiveStatus("idle");
+      return;
+    }
+
+    setLiveEnabled(true);
+  }
+
   return (
     <main className="grid min-h-[42rem] gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
       <section className="grid min-h-0 content-start gap-4">
@@ -274,11 +358,27 @@ function RunObservabilityPage() {
               label={`${eventRecords.length} events`}
               table={table}
             />
+            {liveEnabled ? (
+              <LiveLogPanel
+                error={liveError}
+                records={eventRecords}
+                status={liveStatus}
+              />
+            ) : null}
             <EventPreview eventRecord={selectedEvent} />
           </>
         )}
       </section>
       <aside className="grid content-start gap-3 border border-[var(--mesh-line)] bg-black/20 p-3">
+        <Button
+          disabled={!canLive && !liveEnabled}
+          type="button"
+          variant={liveEnabled ? "white" : "default"}
+          onClick={toggleLiveEvents}
+        >
+          <IconActivity aria-hidden="true" />
+          {liveEnabled ? "Close live" : "Live"}
+        </Button>
         <Button
           disabled={eventRecordsQuery.isFetching}
           type="button"
@@ -312,6 +412,49 @@ function RunObservabilityPage() {
         </Select>
       </aside>
     </main>
+  );
+}
+
+function LiveLogPanel({
+  error,
+  records,
+  status,
+}: {
+  error: string | undefined;
+  records: AgentRunEventRecord[];
+  status: LiveStatus;
+}) {
+  const logRef = useRef<HTMLPreElement>(null);
+
+  useEffect(() => {
+    const log = logRef.current;
+    if (log === null) {
+      return;
+    }
+
+    log.scrollTop = log.scrollHeight;
+  }, [records.length]);
+
+  const lines = records.map((record) => liveLogLine(record));
+
+  return (
+    <section className="grid gap-3 border border-[var(--mesh-line)] bg-black/20 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-sm font-bold text-[var(--mesh-white)]">Live log</h2>
+        <span className="font-mono text-xs text-[var(--mesh-muted)] uppercase">
+          {liveStatusLabel[status]}
+        </span>
+      </div>
+      <pre
+        ref={logRef}
+        className="max-h-72 min-h-40 overflow-auto border border-[var(--mesh-line)] bg-black/50 p-3 font-mono text-xs whitespace-pre-wrap text-[var(--mesh-muted)]"
+      >
+        {lines.length === 0 ? liveStatusEmptyText[status] : lines.join("\n")}
+      </pre>
+      {error === undefined ? null : (
+        <p className="text-sm text-[oklch(82%_0.14_25)]">{error}</p>
+      )}
+    </section>
   );
 }
 
@@ -368,3 +511,61 @@ function parseEventTypeFilter(value: string): EventTypeFilter {
 
   return eventTypes.find((eventType) => eventType === value) ?? "all";
 }
+
+function appendLiveRecord(
+  records: AgentRunEventRecord[],
+  record: AgentRunEventRecord,
+) {
+  if (records.some((item) => item.id === record.id)) {
+    return records;
+  }
+
+  return [...records, record].sort(sortEventRecords);
+}
+
+function mergeEventRecords(
+  baseRecords: AgentRunEventRecord[],
+  liveRecords: AgentRunEventRecord[],
+) {
+  const recordsById = new Map<number, AgentRunEventRecord>();
+  for (const record of baseRecords) {
+    recordsById.set(record.id, record);
+  }
+  for (const record of liveRecords) {
+    recordsById.set(record.id, record);
+  }
+
+  return Array.from(recordsById.values()).sort(sortEventRecords);
+}
+
+function sortEventRecords(
+  left: AgentRunEventRecord,
+  right: AgentRunEventRecord,
+) {
+  return left.id - right.id;
+}
+
+function liveLogLine(record: AgentRunEventRecord) {
+  return [
+    `[${new Date(record.createdAt).toISOString()}]`,
+    `#${record.id}`,
+    record.eventType,
+    eventSummary(record),
+  ].join(" ");
+}
+
+const liveStatusLabel = {
+  connecting: "connecting",
+  ended: "ended",
+  error: "error",
+  idle: "idle",
+  live: "live",
+} satisfies Record<LiveStatus, string>;
+
+const liveStatusEmptyText = {
+  connecting: "Connecting to live log...",
+  ended: "Live stream ended.",
+  error: "Live stream failed.",
+  idle: "Live stream idle.",
+  live: "Waiting for events...",
+} satisfies Record<LiveStatus, string>;

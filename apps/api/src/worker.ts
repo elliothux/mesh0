@@ -1,8 +1,10 @@
 import { Container, getContainer } from "@cloudflare/containers";
+import type { ScheduledController } from "@cloudflare/workers-types";
 import { CloudflareSandbox } from "@mesh0/adapters/sandbox/cloudflare";
 import { R2Storage } from "@mesh0/adapters/storage/r2";
 import { createDb } from "@mesh0/db";
 import { Services } from "@mesh0/services";
+import { createApiFetchHandler } from "./app";
 import {
   appendAuthCookies,
   createWorkOSAuth,
@@ -13,9 +15,7 @@ import {
 import type { Context, WorkerEnv } from "./context";
 import { parseAppEnv, type AppEnv } from "./env";
 import { isLocalHost } from "./http";
-import { createCorsHeaders, rpcHandler, withCors } from "./orpc";
-import { handleRunStorageRequest } from "./storage";
-import { handleRunWorkspaceRequest } from "./workspace";
+import { withCors } from "./orpc";
 
 export class Mesh0RunnerSandbox extends Container<WorkerEnv> {
   override defaultPort = 3000;
@@ -26,56 +26,21 @@ export class Mesh0RunnerSandbox extends Container<WorkerEnv> {
 export default {
   async fetch(request: Request, worker: WorkerEnv) {
     const appEnv = parseAppEnv(worker);
-
-    if (request.method === "OPTIONS") {
-      return new Response(null, {
-        headers: createCorsHeaders(request, appEnv),
-        status: 204,
-      });
-    }
-
     const context = createWorkerContext(request, worker, appEnv);
+    const apiHandler = createApiFetchHandler(() => context);
     const authResponse = await handleAuthRequest(request, context);
     if (authResponse !== undefined) {
       return withCors(authResponse, request, context.env);
     }
 
-    const storageResponse = await handleRunStorageRequest(request, context);
-    if (storageResponse !== undefined) {
-      return withCors(
-        mergeResponseHeaders(storageResponse, context.responseHeaders),
-        request,
-        context.env,
-      );
-    }
+    return apiHandler(request);
+  },
 
-    const workspaceResponse = await handleRunWorkspaceRequest(request, context);
-    if (workspaceResponse !== undefined) {
-      return withCors(
-        mergeResponseHeaders(workspaceResponse, context.responseHeaders),
-        request,
-        context.env,
-      );
-    }
-
-    const result = await rpcHandler.handle(request, {
-      context,
-      prefix: "/rpc",
-    });
-
-    if (result.matched) {
-      return withCors(
-        mergeResponseHeaders(result.response, context.responseHeaders),
-        request,
-        context.env,
-      );
-    }
-
-    return withCors(
-      new Response("Not Found", { status: 404 }),
-      request,
-      context.env,
-    );
+  async scheduled(controller: ScheduledController, worker: WorkerEnv) {
+    const appEnv = parseAppEnv(worker);
+    const request = new Request(`https://api.${appEnv.APP_DOMAIN}/__scheduled`);
+    const context = createWorkerContext(request, worker, appEnv);
+    await context.services.runDueCrons(new Date(controller.scheduledTime));
   },
 };
 
@@ -176,21 +141,4 @@ async function handleAuthRequest(request: Request, context: Context) {
   });
 
   return response;
-}
-
-function mergeResponseHeaders(response: Response, headers: Headers) {
-  if ([...headers].length === 0) {
-    return response;
-  }
-
-  const mergedHeaders = new Headers(response.headers);
-  for (const [key, value] of headers) {
-    mergedHeaders.append(key, value);
-  }
-
-  return new Response(response.body, {
-    headers: mergedHeaders,
-    status: response.status,
-    statusText: response.statusText,
-  });
 }

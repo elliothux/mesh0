@@ -4,10 +4,13 @@
   "type": "module",
   "exports": {
     ".": "./src/services.ts",
+    "./agent": "./src/agent.ts",
     "./api-key": "./src/api-key.ts",
+    "./cron": "./src/cron.ts",
     "./run": "./src/run.ts",
     "./system-prompt": "./src/system-prompt.ts",
-    "./user": "./src/user.ts"
+    "./user": "./src/user.ts",
+    "./webhook": "./src/webhook.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

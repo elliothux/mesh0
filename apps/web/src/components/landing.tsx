@@ -49,6 +49,7 @@ const websiteNavItems = [
   { href: "#fleet-control", label: "Fleet" },
   { href: "#observability", label: "Events" },
   { href: "#backends", label: "Backends" },
+  { href: "/docs", label: "Docs" },
 ];
 
 const heroActions: Action[] = [
@@ -100,7 +101,7 @@ const featureSections: FeatureSection[] = [
   {
     actions: [
       {
-        href: "#api",
+        href: "/docs",
         icon: <IconArrowRight aria-hidden="true" size={18} stroke={1.8} />,
         label: "Read the docs",
         variant: "secondary",

@@ -15,8 +15,10 @@ import type {
   AppendRunEventsResult,
   CompleteRunInput,
   ListRunsInput,
+  LiveRunEventsInput,
   RunEventRecordsInput,
   RunIdInput,
+  RunNotification,
   RunWorkspaceSource,
   RunnerRunConfig,
 } from "@mesh0/sdk/types";
@@ -25,6 +27,9 @@ import { and, asc, desc, eq, gt } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { constantTimeEqual, hashSecret } from "./secrets";
 import { resolveSystemPrompt } from "./system-prompt";
+
+const LIVE_EVENT_BATCH_LIMIT = 100;
+const LIVE_EVENT_POLL_INTERVAL_MS = 1_000;
 
 export class RunNotFoundError extends Error {
   constructor() {
@@ -40,16 +45,41 @@ export class RunAuthenticationError extends Error {
   }
 }
 
+export class RunNotificationConfigError extends Error {
+  constructor() {
+    super("Run notification dispatcher is required before using notify");
+    this.name = "RunNotificationConfigError";
+  }
+}
+
+export interface RunNotificationDelivery {
+  artifactUris: string[];
+  dashboardPath: string;
+  notification: RunNotification;
+  run: AgentRunRecord;
+}
+
+export interface RunNotificationDispatcher {
+  deliver(input: RunNotificationDelivery): Promise<void>;
+}
+
 export class RunService {
   readonly #db: Db;
+  readonly #notifications: RunNotificationDispatcher | undefined;
   readonly #sandbox: RunnerSandbox | undefined;
 
-  constructor(db: Db, sandbox?: RunnerSandbox) {
+  constructor(
+    db: Db,
+    sandbox?: RunnerSandbox,
+    notifications?: RunNotificationDispatcher,
+  ) {
     this.#db = db;
+    this.#notifications = notifications;
     this.#sandbox = sandbox;
   }
 
   async create(userId: string, input: AgentRunInput): Promise<AgentRunRecord> {
+    this.#validateNotifications(input);
     await this.#validateWorkspaceSource({ input, userId });
 
     const runId = `run_${nanoid()}`;
@@ -165,6 +195,25 @@ export class RunService {
     });
   }
 
+  async liveEventRecords({
+    afterEventId,
+    eventType,
+    runId,
+    signal,
+    userId,
+  }: LiveRunEventsInput & {
+    signal?: AbortSignal;
+    userId: string;
+  }): Promise<AsyncGenerator<AgentRunEventRecord>> {
+    await this.#getScopedRun({ runId, userId });
+    return this.#streamRunEventRecords({
+      afterEventId,
+      eventType,
+      runId,
+      signal,
+    });
+  }
+
   async appendEvents({
     events,
     runId,
@@ -223,7 +272,36 @@ export class RunService {
       })
       .where(eq(agentRuns.id, runId));
 
+    await this.#deliverNotification(record);
+
     return record;
+  }
+
+  #validateNotifications(input: AgentRunInput) {
+    if (
+      input.notifications !== undefined &&
+      this.#notifications === undefined
+    ) {
+      throw new RunNotificationConfigError();
+    }
+  }
+
+  async #deliverNotification(run: AgentRunRecord) {
+    const notification = run.input.notifications;
+    if (notification === undefined) {
+      return;
+    }
+
+    if (this.#notifications === undefined) {
+      throw new RunNotificationConfigError();
+    }
+
+    await this.#notifications.deliver({
+      artifactUris: run.artifacts.map((artifact) => artifact.uri),
+      dashboardPath: `/run/${run.id}`,
+      notification,
+      run,
+    });
   }
 
   async #getStoredRun(runId: string) {
@@ -319,6 +397,42 @@ export class RunService {
       .limit(limit);
 
     return events.map(({ event }) => parseRunEventRecord(event));
+  }
+
+  async *#streamRunEventRecords({
+    afterEventId,
+    eventType,
+    runId,
+    signal,
+  }: LiveRunEventsInput & {
+    signal?: AbortSignal;
+  }): AsyncGenerator<AgentRunEventRecord> {
+    let cursor = afterEventId;
+
+    while (signal?.aborted !== true) {
+      const records = await this.#getStoredRunEventRecords({
+        afterEventId: cursor,
+        eventType,
+        limit: LIVE_EVENT_BATCH_LIMIT,
+        runId,
+      });
+
+      for (const record of records) {
+        cursor = record.id;
+        yield record;
+      }
+
+      if (records.length === LIVE_EVENT_BATCH_LIMIT) {
+        continue;
+      }
+
+      const run = await this.#getStoredRun(runId);
+      if (isTerminalRunStatus(run.status)) {
+        return;
+      }
+
+      await waitForLiveEventPoll(signal);
+    }
   }
 
   async #startExecution(record: AgentRunRecord, runnerToken: string) {
@@ -458,6 +572,30 @@ function eventEnvelope(event: ThreadEvent) {
     itemStatus: null,
     itemType: null,
   };
+}
+
+function isTerminalRunStatus(status: AgentRunRecord["status"]) {
+  return status === "completed" || status === "failed" || status === "canceled";
+}
+
+function waitForLiveEventPoll(signal: AbortSignal | undefined) {
+  if (signal?.aborted === true) {
+    return Promise.resolve();
+  }
+
+  return new Promise<void>((resolve) => {
+    let timeout: ReturnType<typeof setTimeout>;
+    const handleAbort = () => {
+      clearTimeout(timeout);
+      resolve();
+    };
+
+    timeout = setTimeout(() => {
+      signal?.removeEventListener("abort", handleAbort);
+      resolve();
+    }, LIVE_EVENT_POLL_INTERVAL_MS);
+    signal?.addEventListener("abort", handleAbort, { once: true });
+  });
 }
 
 function formatExecutionError(error: unknown) {

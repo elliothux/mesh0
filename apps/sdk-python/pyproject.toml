@@ -1,0 +1,20 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mesh0"
+version = "0.1.0"
+description = "Python SDK for Mesh0 agent orchestration"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [{ name = "Mesh0" }]
+dependencies = []
+
+[project.urls]
+Homepage = "https://mesh0.run"
+Repository = "https://github.com/elliothux/mesh0"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mesh0"]

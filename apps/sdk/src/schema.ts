@@ -143,6 +143,12 @@ export const agentSystemPromptSchema = z.union([
   z.strictObject({ replace: nonEmptyStringSchema }),
 ]);
 
+export const agentPromptSchema = z.union([
+  nonEmptyStringSchema,
+  z.strictObject({ append: nonEmptyStringSchema }),
+  z.strictObject({ replace: nonEmptyStringSchema }),
+]);
+
 export const gitWorkspaceSourceSchema = z.strictObject({
   type: z.literal("git"),
   url: nonEmptyStringSchema,
@@ -173,13 +179,33 @@ export const openAiEnvSchema = z
   })
   .catchall(z.string());
 
-export const agentRunInputSchema = z.strictObject({
+export const agentExecutionTargetSchema = z.enum(["auto", "cloudflare"]);
+
+export const runNotificationSchema = z
+  .strictObject({
+    email: z.string().email().optional(),
+    telegramBotToken: nonEmptyStringSchema.optional(),
+  })
+  .refine(
+    ({ email, telegramBotToken }) =>
+      email !== undefined || telegramBotToken !== undefined,
+    { message: "At least one notification destination is required" },
+  );
+
+export const agentConfigSchema = z.strictObject({
   workspace: workspaceRefSchema.optional(),
   mcpServers: mcpServersSchema.optional(),
   skills: z.array(skillRefSchema).optional(),
   systemPrompt: agentSystemPromptSchema.optional(),
+  env: openAiEnvSchema.optional(),
+  prompt: agentPromptSchema.optional(),
+});
+
+export const agentRunInputSchema = agentConfigSchema.extend({
   env: openAiEnvSchema,
   prompt: nonEmptyStringSchema,
+  target: agentExecutionTargetSchema.optional(),
+  notifications: runNotificationSchema.optional(),
 });
 
 export const agentRunStatusSchema = z.enum([
@@ -266,6 +292,132 @@ export const agentRunRecordSchema = z.strictObject({
   startedAt: nonEmptyStringSchema.optional(),
   finishedAt: nonEmptyStringSchema.optional(),
   lastMessage: z.string().optional(),
+});
+
+export const agentRecordSchema = z.strictObject({
+  id: nonEmptyStringSchema,
+  userId: nonEmptyStringSchema,
+  name: nonEmptyStringSchema,
+  config: agentConfigSchema,
+  createdAt: nonEmptyStringSchema,
+  updatedAt: nonEmptyStringSchema,
+});
+
+export const persistAgentInputSchema = z.strictObject({
+  name: nonEmptyStringSchema,
+  config: agentConfigSchema,
+});
+
+export const agentNameInputSchema = z.strictObject({
+  name: nonEmptyStringSchema,
+});
+
+export const listAgentsInputSchema = z.strictObject({
+  limit: z.number().int().min(1).max(100).default(50),
+});
+
+export const runAgentInputSchema = z.strictObject({
+  name: nonEmptyStringSchema,
+  config: agentConfigSchema.optional(),
+  prompt: agentPromptSchema.optional(),
+  target: agentExecutionTargetSchema.optional(),
+  notifications: runNotificationSchema.optional(),
+});
+
+export const singleAgentDefinitionSchema = z
+  .strictObject({
+    agentName: nonEmptyStringSchema.optional(),
+    config: agentConfigSchema.optional(),
+    prompt: agentPromptSchema.optional(),
+    target: agentExecutionTargetSchema.optional(),
+    notifications: runNotificationSchema.optional(),
+  })
+  .refine(
+    ({ agentName, config }) => agentName !== undefined || config !== undefined,
+    { message: "agentName or config is required" },
+  );
+
+export const agentWorkflowModeSchema = z.enum(["all", "pipe"]);
+
+export const agentWorkflowDefinitionSchema = z.strictObject({
+  mode: agentWorkflowModeSchema,
+  agents: z.array(singleAgentDefinitionSchema).min(1),
+  // oxlint-disable-next-line unicorn/no-thenable -- workflow definitions expose the public then/catch DSL.
+  then: singleAgentDefinitionSchema.optional(),
+  catch: singleAgentDefinitionSchema.optional(),
+});
+
+export const agentDefinitionSchema = z.union([
+  singleAgentDefinitionSchema,
+  agentWorkflowDefinitionSchema,
+]);
+
+export const cronIdInputSchema = z.strictObject({
+  cronId: nonEmptyStringSchema,
+});
+
+export const createCronInputSchema = z.strictObject({
+  name: nonEmptyStringSchema,
+  expression: nonEmptyStringSchema,
+  invalidateAt: nonEmptyStringSchema.optional(),
+  definition: agentDefinitionSchema,
+});
+
+export const listCronsInputSchema = z.strictObject({
+  limit: z.number().int().min(1).max(100).default(50),
+});
+
+export const cronRecordSchema = z.strictObject({
+  id: nonEmptyStringSchema,
+  userId: nonEmptyStringSchema,
+  name: nonEmptyStringSchema,
+  expression: nonEmptyStringSchema,
+  invalidateAt: z.string().nullable(),
+  definition: agentDefinitionSchema,
+  createdAt: nonEmptyStringSchema,
+  updatedAt: nonEmptyStringSchema,
+  lastTriggeredAt: z.string().nullable(),
+  lastRunId: z.string().nullable(),
+  deletedAt: z.string().nullable(),
+});
+
+export const webhookIdInputSchema = z.strictObject({
+  webhookId: nonEmptyStringSchema,
+});
+
+export const webhookRouteNameSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .regex(/^[A-Za-z0-9_-]+$/, {
+    message:
+      "Webhook names may contain letters, numbers, underscores, and hyphens",
+  });
+
+export const createWebhookInputSchema = z.strictObject({
+  name: webhookRouteNameSchema,
+  definition: agentDefinitionSchema,
+});
+
+export const listWebhooksInputSchema = z.strictObject({
+  limit: z.number().int().min(1).max(100).default(50),
+});
+
+export const webhookRecordSchema = z.strictObject({
+  id: nonEmptyStringSchema,
+  userId: nonEmptyStringSchema,
+  uid: nonEmptyStringSchema,
+  name: webhookRouteNameSchema,
+  path: nonEmptyStringSchema,
+  definition: agentDefinitionSchema,
+  createdAt: nonEmptyStringSchema,
+  updatedAt: nonEmptyStringSchema,
+  deletedAt: z.string().nullable(),
+});
+
+export const webhookTriggerPayloadSchema = z.strictObject({
+  config: agentConfigSchema.optional(),
+  prompt: agentPromptSchema.optional(),
 });
 
 export const threadEventTypeSchema = z.enum([
@@ -447,6 +599,11 @@ export const runEventRecordsInputSchema = z.strictObject({
   eventType: threadEventTypeSchema.optional(),
   limit: z.number().int().min(1).max(500).default(100),
   runId: nonEmptyStringSchema.optional(),
+});
+
+export const liveRunEventsInputSchema = runIdInputSchema.extend({
+  afterEventId: z.number().int().min(0).optional(),
+  eventType: threadEventTypeSchema.optional(),
 });
 
 export const runnerRunConfigSchema = z.strictObject({

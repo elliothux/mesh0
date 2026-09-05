@@ -1,0 +1,4 @@
+{
+  "ignoreBinaries": ["python3"],
+  "ignore": ["test/control-plane/*.test.ts", "test/runner/*.test.ts"]
+}

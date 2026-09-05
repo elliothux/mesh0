@@ -1,0 +1,12 @@
+{
+  "name": "@mesh0/docs",
+  "type": "module",
+  "exports": {
+    ".": "./src/generated.ts",
+    "./types": "./src/types.ts"
+  },
+  "scripts": {
+    "generate": "bun run scripts/generate.ts",
+    "typecheck": "tsc --noEmit"
+  }
+}

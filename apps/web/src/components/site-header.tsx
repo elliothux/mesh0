@@ -29,7 +29,13 @@ type AnchorNavItem = {
   label: string;
 };
 
-type DashboardRouteTo = "/keys" | "/runs";
+type DashboardRouteTo =
+  | "/agents"
+  | "/crons"
+  | "/keys"
+  | "/playground"
+  | "/runs"
+  | "/webhooks";
 
 type RouteNavItem = {
   label: string;
@@ -277,6 +283,19 @@ function DashboardNavLink({
         data-active={dataActive}
         preload="render"
         search={{ page: 1, status: "all" }}
+        to={to}
+      >
+        {label}
+      </Link>
+    );
+  }
+
+  if (to !== "/keys") {
+    return (
+      <Link
+        className={className}
+        data-active={dataActive}
+        preload="render"
         to={to}
       >
         {label}

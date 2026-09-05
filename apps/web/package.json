@@ -2,7 +2,7 @@
   "name": "@mesh0/web",
   "private": true,
   "scripts": {
-    "build": "vite build",
+    "build": "rm -rf dist && vite build",
     "dev": "vite dev --port 5591",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit"

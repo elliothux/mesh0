@@ -10,7 +10,11 @@ import {
 import { orpc } from "../../lib/api";
 
 const dashboardTabs = [
+  { label: "Agents", to: "/agents" },
   { label: "Runs", to: "/runs" },
+  { label: "Crons", to: "/crons" },
+  { label: "Webhooks", to: "/webhooks" },
+  { label: "Playground", to: "/playground" },
   { label: "API Keys", to: "/keys" },
 ] satisfies SiteHeaderItem[];
 const dashboardAccountPlaceholder = (

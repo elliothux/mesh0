@@ -43,7 +43,14 @@ async function main() {
       artifactPath: dashboardApi.seed.artifactPath,
       completedRunId: dashboardApi.seed.completedRunId,
       eventType: dashboardApi.seed.eventType,
+      runningRunId: dashboardApi.seed.runningRunId,
     });
+    await testControlPlanePages(page, webUrl, {
+      agentName: dashboardApi.seed.agentName,
+      cronName: dashboardApi.seed.cronName,
+      webhookName: dashboardApi.seed.webhookName,
+    });
+    await testDocsPage(page, webUrl);
     await testApiKeysPage(page, webUrl);
     await testAccountMenu(page, webUrl, dashboardApi.seed.userEmail);
 
@@ -58,6 +65,72 @@ async function main() {
     webServer.stop();
     dashboardApi.close();
   }
+}
+
+async function testControlPlanePages(
+  page: Page,
+  webUrl: string,
+  seed: { agentName: string; cronName: string; webhookName: string },
+) {
+  await page.goto(new URL("/agents", webUrl).toString(), {
+    waitUntil: "domcontentloaded",
+  });
+  await page.getByRole("heading", { exact: true, name: "Agents" }).waitFor();
+  await page.getByText(seed.agentName).first().waitFor();
+  await page.getByRole("button", { name: "Run" }).first().click();
+  await page.getByText(/Run queued: run_/).waitFor();
+
+  await page.goto(new URL("/crons", webUrl).toString(), {
+    waitUntil: "domcontentloaded",
+  });
+  await page.getByRole("heading", { exact: true, name: "Crons" }).waitFor();
+  await page.getByText(seed.cronName).first().waitFor();
+
+  await page.goto(new URL("/webhooks", webUrl).toString(), {
+    waitUntil: "domcontentloaded",
+  });
+  await page.getByRole("heading", { exact: true, name: "Webhooks" }).waitFor();
+  await page.getByText(seed.webhookName).first().waitFor();
+  await page.getByRole("button", { name: "Copy webhook URL" }).first().click();
+  const copiedWebhookUrl = await page.evaluate(() =>
+    navigator.clipboard.readText(),
+  );
+  assert(copiedWebhookUrl.includes("/webhook/"), "webhook URL copy failed");
+
+  await page.goto(new URL("/playground", webUrl).toString(), {
+    waitUntil: "domcontentloaded",
+  });
+  await page
+    .getByRole("heading", { exact: true, name: "Playground" })
+    .waitFor();
+  await page.waitForTimeout(1_500);
+  await page.getByLabel("Agent name").fill(seed.agentName);
+  await page.getByLabel("Prompt").fill("Playground e2e run.");
+  await page.getByRole("button", { name: "Run" }).click();
+  await page.getByRole("button", { name: "Copy run ID" }).waitFor();
+}
+
+async function testDocsPage(page: Page, webUrl: string) {
+  await page.goto(new URL("/docs", webUrl).toString(), {
+    waitUntil: "domcontentloaded",
+  });
+  await page.waitForLoadState("networkidle");
+  await page.getByRole("heading", { name: "Quick Start" }).waitFor();
+  await page.getByText("mesh0 docs").waitFor();
+  const pythonTab = page.getByRole("tab", { name: "Python" });
+  await pythonTab.click();
+  await page.waitForLoadState("networkidle");
+  await page.waitForFunction(() => {
+    const selectedTab = document.querySelector(
+      '[role="tab"][aria-selected="true"]',
+    );
+    return selectedTab?.textContent?.includes("Python") === true;
+  });
+  await page.getByText("HTTP API").waitFor();
+  await page.getByLabel("Search docs").fill("live");
+  await page.getByRole("button", { name: /Live logs/ }).click();
+  await page.getByRole("heading", { name: "Runs and Events" }).waitFor();
+  await page.getByText("/rpc/runs/liveEvents").first().waitFor();
 }
 
 async function testRunsPage(
@@ -119,7 +192,12 @@ async function testRunsPage(
 async function testRunDetailPage(
   page: Page,
   webUrl: string,
-  seed: { artifactPath: string; completedRunId: string; eventType: string },
+  seed: {
+    artifactPath: string;
+    completedRunId: string;
+    eventType: string;
+    runningRunId: string;
+  },
 ) {
   await page.goto(new URL(`/run/${seed.completedRunId}`, webUrl).toString(), {
     waitUntil: "domcontentloaded",
@@ -249,6 +327,15 @@ async function testRunDetailPage(
       nextUrl.searchParams.get("eventType") === "all" &&
       nextUrl.searchParams.get("page") === "1",
   );
+
+  await page.goto(
+    new URL(`/run/${seed.runningRunId}/observability`, webUrl).toString(),
+    { waitUntil: "domcontentloaded" },
+  );
+  await page.getByRole("heading", { name: seed.runningRunId }).waitFor();
+  await page.getByRole("button", { name: "Live" }).click();
+  await page.getByRole("heading", { name: "Live log" }).waitFor();
+  await page.getByText("thread.started").first().waitFor();
 }
 
 async function testApiKeysPage(page: Page, webUrl: string) {
@@ -350,7 +437,7 @@ async function testAccountMenu(page: Page, webUrl: string, userEmail: string) {
     waitUntil: "domcontentloaded",
   });
   await page.getByRole("heading", { name: "Agent runs" }).waitFor();
-  await page.getByText("32 runs loaded").waitFor();
+  await page.getByText(/runs loaded/).waitFor();
   await page.getByRole("button", { name: "Account menu" }).click();
   const accountMenu = page.getByRole("menu");
   await accountMenu.getByText("Dashboard Test").waitFor();

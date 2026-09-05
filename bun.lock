@@ -10,6 +10,7 @@
         "@mesh0/adapters": "workspace:*",
         "@mesh0/api": "workspace:*",
         "@mesh0/db": "workspace:*",
+        "@mesh0/docs": "workspace:*",
         "@mesh0/sdk": "workspace:*",
         "@mesh0/services": "workspace:*",
         "@mesh0/ui": "workspace:*",
@@ -83,6 +84,9 @@
     },
     "packages/db": {
       "name": "@mesh0/db",
+    },
+    "packages/docs": {
+      "name": "@mesh0/docs",
     },
     "packages/runner": {
       "name": "@mesh0/runner",
@@ -330,6 +334,8 @@
     "@mesh0/api": ["@mesh0/api@workspace:apps/api"],
 
     "@mesh0/db": ["@mesh0/db@workspace:packages/db"],
+
+    "@mesh0/docs": ["@mesh0/docs@workspace:packages/docs"],
 
     "@mesh0/runner": ["@mesh0/runner@workspace:packages/runner"],
 

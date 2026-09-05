@@ -1,0 +1,9 @@
+{
+  "name": "mesh0-web",
+  "main": "dist/server/server.js",
+  "compatibility_date": "2026-02-24",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "dist/client"
+  }
+}

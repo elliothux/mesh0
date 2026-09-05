@@ -3,8 +3,13 @@ import { FsRunStorageProvider } from "@mesh0/adapters/storage/fs";
 import { createDb } from "@mesh0/db";
 import { buildRunStorageUri } from "@mesh0/sdk/artifacts";
 import { AUTH_ACCESS_TOKEN_COOKIE } from "@mesh0/sdk/auth";
-import type { AgentRunInput } from "@mesh0/sdk/types";
+import type {
+  AgentRunInput,
+  AppendRunEventsInput,
+  CompleteRunInput,
+} from "@mesh0/sdk/types";
 import { Services } from "@mesh0/services";
+import type { RunNotificationDispatcher } from "@mesh0/services/run";
 import { ORPCError } from "@orpc/server";
 import { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
@@ -12,14 +17,9 @@ import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import type { Context } from "../../apps/api/src/context";
-import {
-  createCorsHeaders,
-  rpcHandler,
-  withCors,
-} from "../../apps/api/src/orpc";
-import { handleRunStorageRequest } from "../../apps/api/src/storage";
-import { handleRunWorkspaceRequest } from "../../apps/api/src/workspace";
+import type { WorkOSAuth } from "../../apps/api/src/auth";
+import { createBunApiServer } from "../../apps/api/src/bun";
+import type { WorkerEnv } from "../../apps/api/src/context";
 import { createMemoryD1 } from "./memory-d1";
 
 const MIGRATIONS_DIR = resolve(import.meta.dir, "../../packages/db/migrations");
@@ -71,27 +71,14 @@ export async function startLocalDockerFsApi({
     userId: user.id,
   });
 
-  const server = Bun.serve({
-    fetch: (request) => {
-      const context: Context = {
-        auth: createLocalAuth(user.id),
-        db,
-        env: {
-          APP_DOMAIN: "localhost",
-          DB: d1,
-          WORKOS_API_KEY: "sk_test_local",
-          WORKOS_CLIENT_ID: "client_local",
-        } as unknown as Context["env"],
-        request,
-        responseHeaders: new Headers(),
-        services,
-        storage,
-      };
-
-      return handleApiRequest(request, context);
-    },
+  const server = createBunApiServer({
+    auth: createLocalAuth(user.id),
+    db,
+    env: localWorkerEnv(d1),
     hostname: "0.0.0.0",
     port: 0,
+    services,
+    storage,
   });
 
   runnerApiUrl = `http://host.docker.internal:${server.port}`;
@@ -103,10 +90,20 @@ export async function startLocalDockerFsApi({
       server.stop(true);
       sqlite.close();
     },
+    completeRun(runId: string, completion: CompleteRunInput["completion"]) {
+      return services.run.complete({ completion, runId });
+    },
+    runDueCrons(now: Date) {
+      return services.runDueCrons(now);
+    },
   };
 }
 
-export async function startLocalDashboardApi() {
+export async function startLocalDashboardApi({
+  notifications,
+}: {
+  notifications?: RunNotificationDispatcher;
+} = {}) {
   const sqlite = new Database(":memory:");
   applyMigrations(sqlite);
 
@@ -115,7 +112,7 @@ export async function startLocalDashboardApi() {
   const storage = new FsRunStorageProvider({
     rootDir: await mkdtemp(join(tmpdir(), "mesh0-dashboard-storage-")),
   });
-  const services = new Services({ db });
+  const services = new Services({ db, notifications });
   const now = new Date().toISOString();
   const user = await services.user.upsert({
     createdAt: now,
@@ -138,6 +135,25 @@ export async function startLocalDashboardApi() {
   });
   await services.apiKey.revoke({
     apiKeyId: revokedKey.apiKey.id,
+    userId: user.id,
+  });
+  const dashboardAgent = await services.agent.upsert({
+    config: dashboardRunInput,
+    name: "Dashboard agent",
+    userId: user.id,
+  });
+  const dashboardCron = await services.cron.create({
+    definition: { agentName: dashboardAgent.name },
+    expression: "0 9 * * *",
+    name: "Dashboard daily cron",
+    userId: user.id,
+  });
+  const dashboardWebhook = await services.webhook.create({
+    definition: {
+      agentName: dashboardAgent.name,
+      prompt: { append: "Dashboard webhook payload" },
+    },
+    name: "dashboard-webhook",
     userId: user.id,
   });
 
@@ -268,27 +284,14 @@ export async function startLocalDashboardApi() {
     runId: canceledRun.id,
   });
 
-  const server = Bun.serve({
-    fetch: (request) => {
-      const context: Context = {
-        auth: createLocalAuth(user.id),
-        db,
-        env: {
-          APP_DOMAIN: "localhost",
-          DB: d1,
-          WORKOS_API_KEY: "sk_test_local",
-          WORKOS_CLIENT_ID: "client_local",
-        } as unknown as Context["env"],
-        request,
-        responseHeaders: new Headers(),
-        services,
-        storage,
-      };
-
-      return handleApiRequest(request, context);
-    },
+  const server = createBunApiServer({
+    auth: createLocalAuth(user.id),
+    db,
+    env: localWorkerEnv(d1),
     hostname: "127.0.0.1",
     port: 0,
+    services,
+    storage,
   });
 
   return {
@@ -296,88 +299,50 @@ export async function startLocalDashboardApi() {
     apiUrl: `http://127.0.0.1:${server.port}`,
     seed: {
       activeKeyName: activeKey.apiKey.name,
+      activeKeyValue: activeKey.key,
+      agentName: dashboardAgent.name,
       artifactPath: "dashboard-artifact.txt",
       completedRunId: completedRun.id,
+      cronName: dashboardCron.name,
       eventType: "item.completed",
       failedRunId: failedRun.id,
       revokedKeyName: revokedKey.apiKey.name,
+      runningRunId: runningRun.id,
       userEmail: user.email,
+      webhookName: dashboardWebhook.name,
     },
     close() {
       server.stop(true);
       sqlite.close();
     },
+    completeRun(runId: string, completion: CompleteRunInput["completion"]) {
+      return services.run.complete({ completion, runId });
+    },
+    appendEvents(input: AppendRunEventsInput) {
+      return services.run.appendEvents(input);
+    },
+    runDueCrons(now: Date) {
+      return services.runDueCrons(now);
+    },
   };
-}
-
-async function handleApiRequest(request: Request, context: Context) {
-  if (request.method === "OPTIONS") {
-    return new Response(null, {
-      headers: createCorsHeaders(request, context.env),
-      status: 204,
-    });
-  }
-
-  const storageResponse = await handleRunStorageRequest(request, context);
-  if (storageResponse !== undefined) {
-    return withCors(
-      mergeResponseHeaders(storageResponse, context.responseHeaders),
-      request,
-      context.env,
-    );
-  }
-
-  const workspaceResponse = await handleRunWorkspaceRequest(request, context);
-  if (workspaceResponse !== undefined) {
-    return withCors(
-      mergeResponseHeaders(workspaceResponse, context.responseHeaders),
-      request,
-      context.env,
-    );
-  }
-
-  const result = await rpcHandler.handle(request, {
-    context,
-    prefix: "/rpc",
-  });
-
-  if (result.matched) {
-    return withCors(
-      mergeResponseHeaders(result.response, context.responseHeaders),
-      request,
-      context.env,
-    );
-  }
-
-  return withCors(
-    new Response("Not Found", { status: 404 }),
-    request,
-    context.env,
-  );
 }
 
 function applyMigrations(sqlite: Database) {
   migrate(drizzle(sqlite), { migrationsFolder: MIGRATIONS_DIR });
 }
 
-function mergeResponseHeaders(response: Response, headers: Headers) {
-  if ([...headers].length === 0) {
-    return response;
-  }
-
-  const mergedHeaders = new Headers(response.headers);
-  for (const [key, value] of headers) {
-    mergedHeaders.append(key, value);
-  }
-
-  return new Response(response.body, {
-    headers: mergedHeaders,
-    status: response.status,
-    statusText: response.statusText,
-  });
+function localWorkerEnv(d1: ReturnType<typeof createMemoryD1>): WorkerEnv {
+  return {
+    APP_DOMAIN: "localhost",
+    DB: d1,
+    RUNNER_CONTAINER: {} as WorkerEnv["RUNNER_CONTAINER"],
+    RUNS_BUCKET: {} as WorkerEnv["RUNS_BUCKET"],
+    WORKOS_API_KEY: "sk_test_local",
+    WORKOS_CLIENT_ID: "client_local",
+  };
 }
 
-function createLocalAuth(userId: string): Context["auth"] {
+function createLocalAuth(userId: string): WorkOSAuth {
   return {
     authenticateRequest: async (request) => {
       if (

@@ -8,14 +8,18 @@ import {
   artifactRefSchema,
   completeRunInputSchema,
   listRunsInputSchema,
+  liveRunEventsInputSchema,
   runEventRecordsInputSchema,
   runIdInputSchema,
   runnerRunConfigSchema,
   threadEventSchema,
   uploadRunArtifactInputSchema,
 } from "@mesh0/sdk/schema";
-import { RunNotFoundError } from "@mesh0/services/run";
-import { ORPCError } from "@orpc/server";
+import {
+  RunNotFoundError,
+  RunNotificationConfigError,
+} from "@mesh0/services/run";
+import { ORPCError, eventIterator } from "@orpc/server";
 import {
   authenticateContextRunner,
   procedure,
@@ -47,7 +51,9 @@ export const runRouter = {
     .input(agentRunInputSchema)
     .output(agentRunRecordSchema)
     .handler(({ context, input }) => {
-      return context.services.run.create(context.user.id, input);
+      return mapRunError(() =>
+        context.services.run.create(context.user.id, input),
+      );
     }),
 
   events: protectedProcedure
@@ -72,6 +78,21 @@ export const runRouter = {
           eventType: input.eventType,
           limit: input.limit,
           runId: input.runId,
+          userId: context.user.id,
+        }),
+      );
+    }),
+
+  liveEvents: protectedProcedure
+    .input(liveRunEventsInputSchema)
+    .output(eventIterator(agentRunEventRecordSchema))
+    .handler(({ context, input }) => {
+      return mapRunError(() =>
+        context.services.run.liveEventRecords({
+          afterEventId: input.afterEventId,
+          eventType: input.eventType,
+          runId: input.runId,
+          signal: context.request.signal,
           userId: context.user.id,
         }),
       );
@@ -131,8 +152,14 @@ async function mapRunError<T>(operation: () => Promise<T>): Promise<T> {
   try {
     return await operation();
   } catch (error) {
-    if (error instanceof RunNotFoundError) {
-      throw new ORPCError("NOT_FOUND", { message: error.message });
+    if (
+      error instanceof RunNotFoundError ||
+      error instanceof RunNotificationConfigError
+    ) {
+      throw new ORPCError(
+        error instanceof RunNotFoundError ? "NOT_FOUND" : "BAD_REQUEST",
+        { message: error.message },
+      );
     }
 
     throw error;

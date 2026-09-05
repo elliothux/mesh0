@@ -4,7 +4,10 @@
   "description": "Remote server for Mesh0",
   "type": "module",
   "exports": {
-    ".": "./src/routes/index.ts"
+    ".": "./src/routes/index.ts",
+    "./app": "./src/app.ts",
+    "./bun": "./src/bun.ts",
+    "./node": "./src/node.ts"
   },
   "scripts": {
     "db:migrate:local": "wrangler d1 migrations apply mesh0 --local",
